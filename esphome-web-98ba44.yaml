@@ -14,7 +14,6 @@ esp32:
   flash_size: 4MB
   framework:
     type: arduino
-  psram: true
 
 logger:
 
