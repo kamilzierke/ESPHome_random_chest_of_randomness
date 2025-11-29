@@ -37,16 +37,6 @@ power_supply:
     enable_time: 20ms
     keep_on_time: 0ms
 
-spi:
-  - id: qspi_bus
-    type: quad
-    clk_pin: GPIO47
-    data_pins:
-      - GPIO21
-      - GPIO48
-      - GPIO40
-      - GPIO39
-
 custom_component:
   - lambda: |-
       auto comp = new esphome::lvgl_benchmark::LvglBenchmarkComponent(/*backlight_pin=*/1, /*cs=*/45, /*clk=*/47,
