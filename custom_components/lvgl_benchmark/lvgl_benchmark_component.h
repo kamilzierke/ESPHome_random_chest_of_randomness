@@ -1,6 +1,7 @@
 #pragma once
 
-#include "esphome.h"
+#include "esphome/core/component.h"
+#include "esphome/components/gpio/gpio.h"
 #include <Arduino_GFX_Library.h>
 #include <lvgl.h>
 
@@ -9,7 +10,7 @@ namespace lvgl_benchmark {
 
 class LvglBenchmarkComponent : public Component {
  public:
-  LvglBenchmarkComponent(uint8_t backlight_pin, uint8_t cs, uint8_t clk, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3);
+  LvglBenchmarkComponent(gpio::GPIOPin *backlight_pin, uint8_t cs, uint8_t clk, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3);
 
   void setup() override;
   void loop() override;
@@ -22,7 +23,7 @@ class LvglBenchmarkComponent : public Component {
   void init_lvgl_display_();
   void create_boot_screen_();
 
-  const uint8_t backlight_pin_;
+  gpio::GPIOPin *const backlight_pin_;
   const uint8_t cs_;
   const uint8_t clk_;
   const uint8_t d0_;
@@ -40,6 +41,7 @@ class LvglBenchmarkComponent : public Component {
 
   uint16_t width_{480};
   uint16_t height_{272};
+  bool initialized_{false};
 };
 
 }  // namespace lvgl_benchmark

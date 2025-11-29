@@ -3,11 +3,14 @@ esphome:
   friendly_name: ESPHome Web 98ba44
   min_version: 2025.9.0
   name_add_mac_suffix: false
-  includes:
-    - custom_components/lvgl_benchmark/lvgl_benchmark_component.h
   libraries:
     - lvgl/lvgl@^8.3.11
     - moononournation/Arduino_GFX_Library@^1.4.10
+
+external_components:
+  - source:
+      type: local
+      path: custom_components
 
 esp32:
   variant: esp32s3
@@ -37,9 +40,12 @@ power_supply:
     enable_time: 20ms
     keep_on_time: 0ms
 
-custom_component:
-  - lambda: |-
-      auto comp = new esphome::lvgl_benchmark::LvglBenchmarkComponent(/*backlight_pin=*/1, /*cs=*/45, /*clk=*/47,
-                                                                      /*d0=*/21, /*d1=*/48, /*d2=*/40, /*d3=*/39);
-      return {comp};
+lvgl_benchmark:
+  backlight_pin: GPIO1
+  cs_pin: GPIO45
+  clk_pin: GPIO47
+  d0_pin: GPIO21
+  d1_pin: GPIO48
+  d2_pin: GPIO40
+  d3_pin: GPIO39
 

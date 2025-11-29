@@ -1,13 +1,15 @@
 #include "lvgl_benchmark_component.h"
 
 #include "esp_heap_caps.h"
+#include "esphome/core/hal.h"
+#include "esphome/core/log.h"
 
 namespace esphome {
 namespace lvgl_benchmark {
 
 static const char *const TAG = "lvgl_benchmark";
 
-LvglBenchmarkComponent::LvglBenchmarkComponent(uint8_t backlight_pin, uint8_t cs, uint8_t clk, uint8_t d0,
+LvglBenchmarkComponent::LvglBenchmarkComponent(gpio::GPIOPin *backlight_pin, uint8_t cs, uint8_t clk, uint8_t d0,
                                                uint8_t d1, uint8_t d2, uint8_t d3)
     : backlight_pin_(backlight_pin), cs_(cs), clk_(clk), d0_(d0), d1_(d1), d2_(d2), d3_(d3) {}
 
@@ -23,8 +25,11 @@ void LvglBenchmarkComponent::setup() {
     return;
   }
 
-  pinMode(backlight_pin_, OUTPUT);
-  digitalWrite(backlight_pin_, HIGH);
+  if (this->backlight_pin_ != nullptr) {
+    this->backlight_pin_->setup();
+    this->backlight_pin_->pin_mode(gpio::FLAG_OUTPUT);
+    this->backlight_pin_->digital_write(true);
+  }
 
   canvas_->fillScreen(BLACK);
 
@@ -37,10 +42,14 @@ void LvglBenchmarkComponent::setup() {
   this->init_lvgl_display_();
   this->create_boot_screen_();
 
+  initialized_ = true;
   ESP_LOGI(TAG, "LVGL bootstrap finished");
 }
 
 void LvglBenchmarkComponent::loop() {
+  if (!initialized_) {
+    return;
+  }
   lv_timer_handler();
   canvas_->flush();
   delay(5);
@@ -96,7 +105,9 @@ void LvglBenchmarkComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "LVGL Benchmark display:");
   ESP_LOGCONFIG(TAG, "  Resolution: %ux%u", width_, height_);
   ESP_LOGCONFIG(TAG, "  QSPI: cs=%u clk=%u d0=%u d1=%u d2=%u d3=%u", cs_, clk_, d0_, d1_, d2_, d3_);
-  ESP_LOGCONFIG(TAG, "  Backlight pin: %u", backlight_pin_);
+  if (this->backlight_pin_ != nullptr) {
+    ESP_LOGCONFIG(TAG, "  Backlight pin: %u", this->backlight_pin_->get_pin());
+  }
 }
 
 }  // namespace lvgl_benchmark
