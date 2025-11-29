@@ -1,0 +1,63 @@
+esphome:
+  name: esphome-web-98ba44
+  friendly_name: ESPHome Web 98ba44
+  min_version: 2025.9.0
+  name_add_mac_suffix: false
+
+esp32:
+  variant: esp32s3
+  # zakładam, że moduł ma PSRAM (jak w Arduino demie)
+  flash_size: 4MB
+
+  framework:
+    type: esp-idf
+
+# Logowanie na UART
+logger:
+
+# API Home Assistanta
+api:
+
+# OTA (nowy format listowy)
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # awaryjny AP gdy brak WiFi
+  ap:
+    ssid: "esphome-web-98ba44"
+    password: "change_me_1234"
+
+captive_portal:
+
+# -------------------------
+# SPRZĘT: I2C (GT911) + QSPI (NV3041A) + podświetlenie
+# -------------------------
+
+
+
+# Zasilanie / podświetlenie ekranu
+power_supply:
+  - id: display_backlight
+    pin: GPIO1       # GFX_BL w demie
+    enable_time: 20ms
+    keep_on_time: 0ms
+# QSPI BUS jak w Arduino_ESP32QSPI(LCD_SCK, LCD_D0..D3, LCD_CS)
+spi:
+  - id: qspi_bus
+    type: quad
+    
+    clk_pin: GPIO47  # LCD_SCK
+    data_pins:
+      - GPIO21       # LCD_D0
+      - GPIO48       # LCD_D1
+      - GPIO40       # LCD_D2
+      - GPIO39       # LCD_D3
+
+# -------------------------
+# DOTYK GT911
+# -------------------------
+
