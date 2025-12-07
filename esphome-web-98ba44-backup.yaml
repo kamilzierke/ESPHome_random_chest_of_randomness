@@ -43,13 +43,15 @@ api:
           lambda: 'return (0 == client_info.find("Home Assistant "));'
         then:
           - lvgl.widget.hide: lbl_hastatus
-
 ota:
   - platform: esphome
+
+
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
   ap:
     ssid: "esphome-web-98ba44"
     password: "change_me_1234"
@@ -59,6 +61,7 @@ captive_portal:
 web_server:
   port: 80
   version: 3
+  
 
 ########################################################
 # TIME / DEBUG / GLOBALS / SCRIPTS / NUMBER
@@ -160,7 +163,7 @@ script:
 number:
   - platform: template
     id: screen_sleep_cfg_number
-    name: "Screen sleep timeout [s]"
+    name: "Ekran: czas uspienia [s]"
     min_value: 5
     max_value: 600
     step: 5
@@ -174,6 +177,7 @@ number:
       - light.turn_on:
           id: backlight
 
+
 ########################################################
 # BINARY SENSORS
 ########################################################
@@ -183,10 +187,12 @@ binary_sensor:
     name: "Status"
     device_class: connectivity
 
+  # (opcjonalnie zostawiasz lub usuwasz ten z HA)
   - platform: homeassistant
     id: charger_connected
     entity_id: binary_sensor.device_charging
 
+  # NOWY: ładowanie na podstawie INA226
   - platform: template
     id: charger_charging_from_ina
     name: "Device Charging (INA226)"
@@ -194,9 +200,14 @@ binary_sensor:
     lambda: |-
       const float i = id(ina226_current).state;
       if (isnan(i)) {
+        // Brak sensownych danych -> traktujemy jako nieładowanie
         return false;
       }
+      // i < 0  -> rozładowywanie
+      // i >= 0 -> podłaczone / ładowanie
       return i >= 0.0f;
+
+
 
 ########################################################
 # TEXT SENSORS
@@ -254,9 +265,8 @@ text_sensor:
         return ipAddress.substr(lastDotIndex + 1);
       }
       return esphome::nullopt;
-
+      
 text:
-  # Weather data from Home Assistant (do NOT override in ESPHome)
   - platform: lvgl
     name: fr_cond_icon
     widget: lbl_weather_forecast_condition_icon
@@ -277,12 +287,13 @@ text:
     widget: lbl_weather_outdoor_now
     mode: text
 
+
 ########################################################
 # SENSORS (BATTERY, INA226, DEBUG, WIFI, UPTIME)
 ########################################################
 
 sensor:
-  # Battery level (OCV interpolation)
+  # Poziom baterii (OCV – przybliżenie)
   - platform: template
     id: battery_level
     name: "Battery Level"
@@ -397,7 +408,7 @@ sensor:
 
   - platform: template
     id: screen_sleep_left_sensor
-    name: "Screen remaining sleep time [s]"
+    name: "Ekran: pozostały czas [s]"
     unit_of_measurement: "s"
     accuracy_decimals: 0
     update_interval: 1s
@@ -475,6 +486,7 @@ sensor:
     unit_of_measurement: "%"
     entity_category: "diagnostic"
 
+
 ########################################################
 # I2C / SPI / OUTPUT / LIGHT
 ########################################################
@@ -495,9 +507,13 @@ spi:
   type: quad
   clk_pin: GPIO47
   data_pins:
+    # D0
     - GPIO21
+    # D1
     - GPIO48
+    # D2
     - GPIO40
+    # D3
     - GPIO39
 
 output:
@@ -516,6 +532,7 @@ light:
     on_turn_on:
       then:
         - script.execute: wake_display
+
 
 ########################################################
 # TOUCHSCREEN / DISPLAY
@@ -649,6 +666,369 @@ display:
       - [0x11, 0x00]
       - [0x29, 0x00]
 
+
+########################################################
+# LVGL: STYLES, TOP LAYER (STATUS BAR), MAIN PAGE
+########################################################
+
+lvgl:
+  displays:
+    - main_display
+  touchscreens:
+    - my_touchscreen
+  color_depth: 16
+  buffer_size: 25%
+  log_level: INFO
+  
+  style_definitions:
+    - id: screen_style
+      bg_color: 0x000000
+      bg_opa: COVER
+      text_color: 0xFFFFFF
+
+    # Styl dla top layer (status bar)
+    - id: top_layer_style
+      text_color: 0xFFFFFF
+
+  on_idle:
+    timeout: !lambda "return (id(screen_sleep_secs_cfg) * 1000);"
+    then:
+      - logger.log: "LVGL is idle"
+      - light.turn_off: backlight
+      - lvgl.pause:
+          show_snow: true        
+
+  top_layer:
+    widgets:
+      # WiFi RSSI w dBm (najbardziej po lewej)
+      - label:
+          id: lbl_wifi_dbm
+          align: TOP_RIGHT
+          x: -190
+          y: 5
+          text_font: montserrat_12
+          text: "-- dBm"
+          styles: top_layer_style
+
+      # WiFi w %
+      - label:
+          id: lbl_wifi_percent
+          align: TOP_RIGHT
+          x: -145
+          y: 5
+          text_font: montserrat_12
+          text: "-- %"
+          styles: top_layer_style
+
+      # Ikona Wi-Fi / status HA
+      - label:
+          text: "\uF1EB"
+          id: lbl_hastatus
+          hidden: true
+          align: TOP_RIGHT
+          x: -100
+          y: 5
+          text_align: right
+          styles: top_layer_style
+
+      # Procent baterii
+      - label:
+          id: lbl_battery_percent
+          align: TOP_RIGHT
+          x: -60
+          y: 5
+          text_font: montserrat_12
+          text: "--%"
+          styles: top_layer_style
+
+      # Ikona stanu baterii
+      - label:
+          id: lbl_battery_status
+          align: TOP_RIGHT
+          x: -5
+          y: 5
+          text_font: battery_icons_20
+          text: "\U000F0091"
+          styles: top_layer_style
+
+          
+      # OTA overlay (pełnoekranowy status OTA)
+      - obj:
+          id: ota_overlay
+          hidden: true
+          align: CENTER
+          x: 0
+          y: 0
+          width: 480
+          height: 272
+          bg_color: 0x000000
+          bg_opa: COVER
+          text_color: 0xFFFFFF
+          radius: 0
+          border_width: 0
+          pad_all: 20
+          layout:
+            type: FLEX
+            flex_flow: COLUMN
+            pad_row: 10
+            flex_align_main: CENTER
+            flex_align_cross: CENTER
+          widgets:
+            - label:
+                id: ota_label_title
+                text: "OTA Update"
+                text_font: montserrat_16
+                text_align: CENTER
+            - label:
+                id: ota_label_status
+                text: "Waiting..."
+                text_font: montserrat_12
+                text_align: CENTER
+            - bar:
+                id: ota_progress_bar
+                width: 300
+                height: 10
+                min_value: 0
+                max_value: 100
+                value: 0
+                bg_color: 0x222222
+                indicator:
+                  bg_color: 0xFFFFFF
+
+
+
+
+  pages:
+    - id: main_page
+      styles: screen_style
+      widgets:
+        # Zegar
+        - label:
+            id: time_label
+            x: 10
+            y: 10
+            text: "00:00:00"
+            text_color: 0xFFFFFF
+            text_font: montserrat_32
+        
+        # Data
+        - label:
+            id: date_label
+            x: 10
+            y: 50
+            text: "2025-01-01"
+            text_color: 0xCCCCCC
+            text_font: montserrat_16
+        
+        # IP Address
+        - label:
+            id: ip_label
+            x: 10
+            y: 80
+            text: "IP: 0.0.0.0"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+        
+        # WiFi SSID
+        - label:
+            id: ssid_label
+            x: 10
+            y: 100
+            text: "WiFi: ---"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+        
+        # Uptime
+        - label:
+            id: uptime_label
+            x: 10
+            y: 120
+            text: "Uptime: 0s"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+
+        # INA226: tytuł
+        - label:
+            id: ina226_label_title
+            x: 10
+            y: 150
+            text: "INA226"
+            text_color: 0xFFFFFF
+            text_font: montserrat_16
+
+        # INA226: prad
+        - label:
+            id: ina226_label_current
+            x: 10
+            y: 170
+            text: "I: 0.000 A"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+
+        # INA226: napiecie szyny
+        - label:
+            id: ina226_label_bus_voltage
+            x: 10
+            y: 190
+            text: "Ubus: 0.00 V"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+
+        # INA226: moc
+        - label:
+            id: ina226_label_power
+            x: 10
+            y: 210
+            text: "P: 0.000 W"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+
+        # INA226: napiecie shuntu
+        - label:
+            id: ina226_label_shunt_voltage
+            x: 10
+            y: 230
+            text: "Vshunt: 0.00 mV"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+
+        # Slider podswietlenia
+        - slider:
+            id: brightness_slider
+            x: 250
+            y: 50
+            width: 220
+            height: 20
+            min_value: 10
+            max_value: 100
+            value: 100
+            on_value:
+              then:
+                - script.execute: wake_display                   
+                - light.turn_on:
+                    id: backlight
+                    brightness: !lambda return x / 100.0;
+                - lvgl.resume:
+                - lvgl.widget.redraw:
+    
+        # Label dla slidera
+        - label:
+            id: brightness_label
+            x: 250
+            y: 30
+            text: "Podswietlenie: 100%"
+            text_color: 0xCCCCCC
+            text_font: montserrat_12
+        
+        # Przycisk testowy
+        - button:
+            id: test_button
+            x: 190
+            y: 86
+            width: 100
+            height: 100
+            bg_color: 0x2196F3
+            on_press:
+              then:
+                - script.execute: wake_display 
+                - logger.log: "Dotkniecie."
+                - lvgl.widget.update:
+                    id: test_button
+                    bg_color: 0x4CAF50
+                - lvgl.label.update:
+                    id: button_label
+                    text: "Ugh!"
+            on_release:
+              then:
+                - script.execute: wake_display 
+                - logger.log: "Button released!"
+                - lvgl.widget.update:
+                    id: test_button
+                    bg_color: 0x2196F3
+                - lvgl.label.update:
+                    id: button_label
+                    text: "Dotknij mnie!"
+            widgets:
+              - label:
+                  id: button_label
+                  text: "Dotknij mnie!"
+                  text_color: 0xFFFFFF
+                  align: CENTER
+
+        #Pogoda
+        - obj:
+            align: BOTTOM_RIGHT
+            x: -10
+            y: -10
+            width: 160
+            height: 136
+            pad_all: 5
+            bg_color: 0x000000
+            bg_opa: COVER
+            text_color: 0xFFFFFF
+            layout:
+              pad_column: 0
+              type: GRID
+              grid_rows: [FR(48), FR(13), FR(13), FR(13), FR(13)]
+              grid_columns: [FR(10), FR(40), FR(40), FR(10)]
+            widgets:
+              - label:
+                  text: "\U000F14E4"
+                  id: lbl_weather_forecast_condition_icon
+                  text_font: icons_50
+                  text_align: CENTER
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  grid_cell_column_span: 4
+                  grid_cell_x_align: CENTER
+                  grid_cell_y_align: START
+
+              - label:
+                  text: "Niedostepne"
+                  id: lbl_weather_forecast_condition_name
+                  text_align: CENTER
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+                  grid_cell_column_span: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: CENTER
+
+              - label:
+                  text: "Temp.:"
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "--.- °C"
+                  id: lbl_weather_outdoor_now
+                  text_align: RIGHT
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+              - label:
+                  text: "Odcz.:"
+                  grid_cell_row_pos: 3
+                  grid_cell_column_pos: 1
+
+              - label:
+                  text: "--.- °C"
+                  id: lbl_weather_forecast_tempap
+                  text_align: RIGHT
+                  grid_cell_row_pos: 3
+                  grid_cell_column_pos: 2
+                  grid_cell_x_align: STRETCH
+
+
+
+    - id: ota_page
+      styles: screen_style
+      widgets:
+        - label:
+            id: ota_label
+            align: CENTER
+            text: "OTA 0%"
+            text_color: 0xFFFFFF
+            text_font: montserrat_16
 ########################################################
 # FONTS
 ########################################################
@@ -751,541 +1131,14 @@ font:
       "\U000F14E4",
     ]
 
-########################################################
-# LVGL: STYLES & CONFIGURATION
-########################################################
-
-lvgl:
-  displays:
-    - main_display
-  touchscreens:
-    - my_touchscreen
-  color_depth: 16
-  buffer_size: 25%
-  log_level: INFO
-  
-  style_definitions:
-    - id: screen_style
-      bg_color: 0x000000
-      bg_opa: COVER
-      text_color: 0xFFFFFF
-
-    - id: top_layer_style
-      text_color: 0xFFFFFF
-
-    - id: modal_style
-      bg_color: 0x1a1a1a
-      bg_opa: COVER
-      border_color: 0x4a4a4a
-      border_width: 2
-      border_opa: COVER
-      pad_all: 15
-      radius: 8
-
-  on_idle:
-    timeout: !lambda "return (id(screen_sleep_secs_cfg) * 1000);"
-    then:
-      - logger.log: "LVGL idle - screen sleeping"
-      - light.turn_off: backlight
-      - lvgl.pause:
-          show_snow: true
-
-  pages:
-    ################
-    # PAGE 1: MAIN (MORNING OVERVIEW)
-    ################
-    - id: page_main
-      styles: screen_style
-      widgets:
-        # TIME LABEL
-        - label:
-            id: time_label
-            x: 10
-            y: 10
-            text: "00:00:00"
-            text_color: 0xFFFFFF
-            text_font: montserrat_32
-
-        # DATE LABEL
-        - label:
-            id: date_label
-            x: 10
-            y: 50
-            text: "2025-01-01"
-            text_color: 0xCCCCCC
-            text_font: montserrat_16
-
-        # IP ADDRESS
-        - label:
-            id: ip_label
-            x: 10
-            y: 80
-            text: "IP: 0.0.0.0"
-            text_color: 0xCCCCCC
-            text_font: montserrat_12
-
-        # WIFI SSID
-        - label:
-            id: ssid_label
-            x: 10
-            y: 100
-            text: "WiFi: ---"
-            text_color: 0xCCCCCC
-            text_font: montserrat_12
-
-        # UPTIME
-        - label:
-            id: uptime_label
-            x: 10
-            y: 120
-            text: "Uptime: 0s"
-            text_color: 0xCCCCCC
-            text_font: montserrat_12
-
-        # CALENDAR SECTION TITLE
-        - label:
-            id: lbl_calendar_title
-            x: 10
-            y: 145
-            text: "Terminy:"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-
-        # CALENDAR EVENT 1
-        - label:
-            id: lbl_cal_evt1_time
-            x: 10
-            y: 160
-            text: "--:--"
-            text_color: 0x90CAF9
-            text_font: montserrat_10
-
-        - label:
-            id: lbl_cal_evt1_title
-            x: 60
-            y: 160
-            text: "---"
-            text_color: 0xCCCCCC
-            text_font: montserrat_10
-            width: 140
-
-        # CALENDAR EVENT 2
-        - label:
-            id: lbl_cal_evt2_time
-            x: 10
-            y: 175
-            text: "--:--"
-            text_color: 0x90CAF9
-            text_font: montserrat_10
-
-        - label:
-            id: lbl_cal_evt2_title
-            x: 60
-            y: 175
-            text: "---"
-            text_color: 0xCCCCCC
-            text_font: montserrat_10
-            width: 140
-
-        # CALENDAR EVENT 3
-        - label:
-            id: lbl_cal_evt3_time
-            x: 10
-            y: 190
-            text: "--:--"
-            text_color: 0x90CAF9
-            text_font: montserrat_10
-
-        - label:
-            id: lbl_cal_evt3_title
-            x: 60
-            y: 190
-            text: "---"
-            text_color: 0xCCCCCC
-            text_font: montserrat_10
-            width: 140
-
-        # WEATHER PANEL (BOTTOM RIGHT)
-        - obj:
-            align: BOTTOM_RIGHT
-            x: -10
-            y: -10
-            width: 160
-            height: 136
-            pad_all: 5
-            bg_color: 0x000000
-            bg_opa: COVER
-            text_color: 0xFFFFFF
-            layout:
-              pad_column: 0
-              type: GRID
-              grid_rows: [FR(48), FR(13), FR(13), FR(13), FR(13)]
-              grid_columns: [FR(10), FR(40), FR(40), FR(10)]
-            widgets:
-              - label:
-                  text: "\U000F14E4"
-                  id: lbl_weather_forecast_condition_icon
-                  text_font: icons_50
-                  text_align: CENTER
-                  grid_cell_row_pos: 0
-                  grid_cell_column_pos: 0
-                  grid_cell_column_span: 4
-                  grid_cell_x_align: CENTER
-                  grid_cell_y_align: START
-
-              - label:
-                  text: "Niedostępne"
-                  id: lbl_weather_forecast_condition_name
-                  text_align: CENTER
-                  grid_cell_row_pos: 1
-                  grid_cell_column_pos: 1
-                  grid_cell_column_span: 2
-                  grid_cell_x_align: STRETCH
-                  grid_cell_y_align: CENTER
-
-              - label:
-                  text: "Temp.:"
-                  grid_cell_row_pos: 2
-                  grid_cell_column_pos: 1
-
-              - label:
-                  text: "--.- °C"
-                  id: lbl_weather_outdoor_now
-                  text_align: RIGHT
-                  grid_cell_row_pos: 2
-                  grid_cell_column_pos: 2
-                  grid_cell_x_align: STRETCH
-
-              - label:
-                  text: "Odcz.:"
-                  grid_cell_row_pos: 3
-                  grid_cell_column_pos: 1
-
-              - label:
-                  text: "--.- °C"
-                  id: lbl_weather_forecast_tempap
-                  text_align: RIGHT
-                  grid_cell_row_pos: 3
-                  grid_cell_column_pos: 2
-                  grid_cell_x_align: STRETCH
-
-    ################
-    # PAGE 2: NEWS
-    ################
-    - id: page_news
-      styles: screen_style
-      widgets:
-        # NEWS TITLE
-        - label:
-            id: lbl_news_title
-            align: TOP_MID
-            x: 0
-            y: 10
-            text: "Wiadomości"
-            text_color: 0xFFFFFF
-            text_font: montserrat_24
-
-        # NEWS ITEM 1
-        - label:
-            id: lbl_news1_title
-            x: 10
-            y: 50
-            text: "Wiadomość 1"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-            width: 460
-
-        - label:
-            id: lbl_news1_meta
-            x: 10
-            y: 65
-            text: "Źródło, godzina"
-            text_color: 0x999999
-            text_font: montserrat_10
-            width: 460
-
-        # NEWS ITEM 2
-        - label:
-            id: lbl_news2_title
-            x: 10
-            y: 85
-            text: "Wiadomość 2"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-            width: 460
-
-        - label:
-            id: lbl_news2_meta
-            x: 10
-            y: 100
-            text: "Źródło, godzina"
-            text_color: 0x999999
-            text_font: montserrat_10
-            width: 460
-
-        # NEWS ITEM 3
-        - label:
-            id: lbl_news3_title
-            x: 10
-            y: 120
-            text: "Wiadomość 3"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-            width: 460
-
-        - label:
-            id: lbl_news3_meta
-            x: 10
-            y: 135
-            text: "Źródło, godzina"
-            text_color: 0x999999
-            text_font: montserrat_10
-            width: 460
-
-        # NEWS ITEM 4
-        - label:
-            id: lbl_news4_title
-            x: 10
-            y: 155
-            text: "Wiadomość 4"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-            width: 460
-
-        - label:
-            id: lbl_news4_meta
-            x: 10
-            y: 170
-            text: "Źródło, godzina"
-            text_color: 0x999999
-            text_font: montserrat_10
-            width: 460
-
-        # NEWS ITEM 5
-        - label:
-            id: lbl_news5_title
-            x: 10
-            y: 190
-            text: "Wiadomość 5"
-            text_color: 0xFFFFFF
-            text_font: montserrat_12
-            width: 460
-
-        - label:
-            id: lbl_news5_meta
-            x: 10
-            y: 205
-            text: "Źródło, godzina"
-            text_color: 0x999999
-            text_font: montserrat_10
-            width: 460
-
-  # ============== TOP LAYER (STATUS BAR) ==============
-  top_layer:
-    widgets:
-      # WiFi dBm
-      - label:
-          id: lbl_wifi_dbm
-          align: TOP_RIGHT
-          x: -190
-          y: 5
-          text_font: montserrat_12
-          text: "-- dBm"
-          styles: top_layer_style
-
-      # WiFi %
-      - label:
-          id: lbl_wifi_percent
-          align: TOP_RIGHT
-          x: -145
-          y: 5
-          text_font: montserrat_12
-          text: "-- %"
-          styles: top_layer_style
-
-      # HA Status Icon (clickable)
-      - button:
-          id: btn_api_status
-          align: TOP_RIGHT
-          x: -100
-          y: 2
-          width: 40
-          height: 20
-          on_press:
-            then:
-              - script.execute: show_api_modal
-
-          widgets:
-            - label:
-                text: "\uF1EB"
-                id: lbl_hastatus
-                hidden: true
-                align: CENTER
-                text_font: icons_10
-                styles: top_layer_style
-
-      # Battery % (clickable)
-      - label:
-          id: lbl_battery_percent
-          align: TOP_RIGHT
-          x: -60
-          y: 5
-          text_font: montserrat_12
-          text: "--%"
-          styles: top_layer_style
-
-      # Battery Icon (clickable)
-      - button:
-          id: btn_battery_status
-          align: TOP_RIGHT
-          x: -5
-          y: 2
-          width: 40
-          height: 20
-          on_press:
-            then:
-              - script.execute: show_battery_modal
-
-          widgets:
-            - label:
-                id: lbl_battery_status
-                text: "\U000F0091"
-                text_font: battery_icons_20
-                text_color: 0xFFFFFF
-                align: CENTER
-
-  # ============== BATTERY MODAL ==============
-      - obj:
-      id: modal_battery_bg
-      hidden: true
-      align: CENTER
-      width: 320
-      height: 220
-      bg_color: 0x000000
-      bg_opa: TRANSP
-      on_press:
-        then:
-          - script.execute: hide_battery_modal
-
-      widgets:
-        - obj:
-            id: modal_battery_box
-            align: CENTER
-            width: 280
-            height: 200
-            styles: modal_style
-            layout:
-              type: FLEX
-              flex_flow: COLUMN
-              pad_all: 10
-              pad_row: 8
-
-            widgets:
-              - label:
-                  text: "Stan baterii"
-                  text_color: 0xFFFFFF
-                  text_font: montserrat_16
-
-              - label:
-                  text: "Poziom: "
-                  id: lbl_modal_battery_level
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - label:
-                  text: "Napięcie: "
-                  id: lbl_modal_battery_voltage
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - label:
-                  text: "Prąd: "
-                  id: lbl_modal_battery_current
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - label:
-                  text: "Moc: "
-                  id: lbl_modal_battery_power
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - button:
-                  text: "Zamknij"
-                  text_color: 0xFFFFFF
-                  text_font: montserrat_12
-                  bg_color: 0x555555
-                  on_press:
-                    then:
-                      - script.execute: hide_battery_modal
-
-  # ============== API MODAL ==============
-      - obj:
-      id: modal_api_bg
-      hidden: true
-      align: CENTER
-      width: 320
-      height: 220
-      bg_color: 0x000000
-      bg_opa: TRANSP
-      on_press:
-        then:
-          - script.execute: hide_api_modal
-
-      widgets:
-        - obj:
-            id: modal_api_box
-            align: CENTER
-            width: 280
-            height: 200
-            styles: modal_style
-            layout:
-              type: FLEX
-              flex_flow: COLUMN
-              pad_all: 10
-              pad_row: 8
-
-            widgets:
-              - label:
-                  text: "Home Assistant API"
-                  text_color: 0xFFFFFF
-                  text_font: montserrat_16
-
-              - label:
-                  text: "Stan: "
-                  id: lbl_modal_api_status
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - label:
-                  text: "WiFi dBm: "
-                  id: lbl_modal_api_wifi_dbm
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - label:
-                  text: "IP: "
-                  id: lbl_modal_api_ip
-                  text_color: 0xCCCCCC
-                  text_font: montserrat_12
-
-              - button:
-                  text: "Zamknij"
-                  text_color: 0xFFFFFF
-                  text_font: montserrat_12
-                  bg_color: 0x555555
-                  on_press:
-                    then:
-                      - script.execute: hide_api_modal
 
 ########################################################
-# INTERVAL UPDATES (Consolidated)
+# INTERVAL UPDATES
 ########################################################
 
 interval:
   - interval: 1s
     then:
-      # TIME
       - lvgl.label.update:
           id: time_label
           text: !lambda |-
@@ -1294,8 +1147,7 @@ interval:
             snprintf(time_str, sizeof(time_str), "%02d:%02d:%02d", 
                      time.hour, time.minute, time.second);
             return time_str;
-
-      # DATE
+      
       - lvgl.label.update:
           id: date_label
           text: !lambda |-
@@ -1304,24 +1156,23 @@ interval:
             snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", 
                      time.year, time.month, time.day_of_month);
             return date_str;
-
-      # IP
+      
       - lvgl.label.update:
           id: ip_label
           text: !lambda |-
             static char ip_str[30];
-            snprintf(ip_str, sizeof(ip_str), "IP: %s", id(wifi_ip).state.c_str());
+            snprintf(ip_str, sizeof(ip_str), "IP: %s", 
+                     id(wifi_ip).state.c_str());
             return ip_str;
-
-      # SSID
+      
       - lvgl.label.update:
           id: ssid_label
           text: !lambda |-
             static char ssid_str[50];
-            snprintf(ssid_str, sizeof(ssid_str), "WiFi: %s", id(wifi_ssid_name).state.c_str());
+            snprintf(ssid_str, sizeof(ssid_str), "WiFi: %s", 
+                     id(wifi_ssid_name).state.c_str());
             return ssid_str;
-
-      # UPTIME
+      
       - lvgl.label.update:
           id: uptime_label
           text: !lambda |-
@@ -1333,15 +1184,59 @@ interval:
             int secs = seconds % 60;
             
             if (days > 0) {
-              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dd %dh", days, hours);
+              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dd %dh %dm", 
+                       days, hours, minutes);
             } else if (hours > 0) {
-              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dh %dm", hours, minutes);
+              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dh %dm %ds", 
+                       hours, minutes, secs);
             } else {
-              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dm %ds", minutes, secs);
+              snprintf(uptime_str, sizeof(uptime_str), "Uptime: %dm %ds", 
+                       minutes, secs);
             }
             return uptime_str;
+      
+      - lvgl.label.update:
+          id: brightness_label
+          text: !lambda |-
+            static char brightness_str[30];
+            auto brightness_light = id(backlight).current_values;
+            int brightness = (int)(brightness_light.get_brightness() * 100);
+            snprintf(brightness_str, sizeof(brightness_str), "Podswietlenie: %d%%", 
+                     brightness);
+            return brightness_str;
 
-      # WiFi dBm (TOP BAR)
+      - lvgl.label.update:
+          id: ina226_label_current
+          text: !lambda |-
+            static char buf[32];
+            float v = id(ina226_current).state;
+            snprintf(buf, sizeof(buf), "I: %.3f A", v);
+            return buf;
+
+      - lvgl.label.update:
+          id: ina226_label_bus_voltage
+          text: !lambda |-
+            static char buf[32];
+            float v = id(ina226_bus_voltage).state;
+            snprintf(buf, sizeof(buf), "Ubus: %.2f V", v);
+            return buf;
+
+      - lvgl.label.update:
+          id: ina226_label_power
+          text: !lambda |-
+            static char buf[32];
+            float v = id(ina226_power).state;
+            snprintf(buf, sizeof(buf), "P: %.3f W", v);
+            return buf;
+
+      - lvgl.label.update:
+          id: ina226_label_shunt_voltage
+          text: !lambda |-
+            static char buf[32];
+            float v = id(ina226_shunt_voltage).state * 1000.0f;
+            snprintf(buf, sizeof(buf), "Vshunt: %.2f mV", v);
+            return buf;
+
       - lvgl.label.update:
           id: lbl_wifi_dbm
           text: !lambda |-
@@ -1354,7 +1249,6 @@ interval:
             }
             return buf;
 
-      # WiFi % (TOP BAR)
       - lvgl.label.update:
           id: lbl_wifi_percent
           text: !lambda |-
@@ -1369,83 +1263,15 @@ interval:
             }
             return buf;
 
-      # MODAL: Battery Level
-      - lvgl.label.update:
-          id: lbl_modal_battery_level
-          text: !lambda |-
-            static char buf[32];
-            float v = id(battery_level).state;
-            if (isnan(v)) {
-              snprintf(buf, sizeof(buf), "Poziom: -- %%");
-            } else {
-              snprintf(buf, sizeof(buf), "Poziom: %.0f %%", v);
-            }
-            return buf;
 
-      # MODAL: Battery Voltage
-      - lvgl.label.update:
-          id: lbl_modal_battery_voltage
-          text: !lambda |-
-            static char buf[32];
-            float v = id(ina226_bus_voltage).state;
-            snprintf(buf, sizeof(buf), "Napięcie: %.2f V", v);
-            return buf;
 
-      # MODAL: Battery Current
-      - lvgl.label.update:
-          id: lbl_modal_battery_current
-          text: !lambda |-
-            static char buf[32];
-            float v = id(ina226_current).state;
-            snprintf(buf, sizeof(buf), "Prąd: %.3f A", v);
-            return buf;
 
-      # MODAL: Battery Power
-      - lvgl.label.update:
-          id: lbl_modal_battery_power
-          text: !lambda |-
-            static char buf[32];
-            float v = id(ina226_power).state;
-            snprintf(buf, sizeof(buf), "Moc: %.3f W", v);
-            return buf;
-
-      # MODAL: API Status
-      - lvgl.label.update:
-          id: lbl_modal_api_status
-          text: !lambda |-
-            if (lv_obj_has_flag(id(lbl_hastatus), LV_OBJ_FLAG_HIDDEN)) {
-              return "Stan: Brak";
-            } else {
-              return "Stan: Połączony";
-            }
-
-      # MODAL: API WiFi dBm
-      - lvgl.label.update:
-          id: lbl_modal_api_wifi_dbm
-          text: !lambda |-
-            static char buf[32];
-            float v = id(wifi_signal_db).state;
-            if (isnan(v)) {
-              snprintf(buf, sizeof(buf), "WiFi dBm: -- dBm");
-            } else {
-              snprintf(buf, sizeof(buf), "WiFi dBm: %.0f dBm", v);
-            }
-            return buf;
-
-      # MODAL: API IP
-      - lvgl.label.update:
-          id: lbl_modal_api_ip
-          text: !lambda |-
-            static char buf[50];
-            snprintf(buf, sizeof(buf), "IP: %s", id(wifi_ip).state.c_str());
-            return buf;
-
-      # SLEEP COUNTDOWN
+  - interval: 1s
+    then:
       - lambda: |-
           if (id(screen_sleep_secs_left) > 0) {
             id(screen_sleep_secs_left)--;
           }
-
       - if:
           condition:
             lambda: 'return id(screen_sleep_secs_left) == 0;'
@@ -1454,6 +1280,7 @@ interval:
                 id: backlight
             - lvgl.pause:
                 show_snow: true
+
 
 ########################################################
 # SWITCHES / BUTTONS
@@ -1476,7 +1303,7 @@ switch:
     optimistic: true
     entity_category: "config"
     turn_on_action:
-      - logger.log: "Antiburn: ON"
+      - logger.log: "Starting Antiburn"
       - if:
           condition: lvgl.is_paused
           then:
@@ -1485,7 +1312,7 @@ switch:
       - lvgl.pause:
           show_snow: true
     turn_off_action:
-      - logger.log: "Antiburn: OFF"
+      - logger.log: "Stopping Antiburn"
       - if:
           condition: lvgl.is_paused
           then:
