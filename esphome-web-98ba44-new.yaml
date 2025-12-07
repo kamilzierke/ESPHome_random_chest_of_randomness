@@ -70,7 +70,6 @@ time:
     id: homeassistant_time
   - platform: sntp
     id: sntp_time
-    timezone: Europe/Warsaw
     on_time:
       - hours: 2,3,4,5
         minutes: 5
@@ -722,6 +721,14 @@ font:
     ]
 
   - file: "fonts/materialdesignicons-webfont.ttf"
+    id: icons_10
+    size: 10
+    bpp: 4
+    glyphs: [
+      "\uF1EB",
+    ]
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
     id: icons_50
     size: 50
     bpp: 4
@@ -1110,11 +1117,11 @@ lvgl:
 
           widgets:
             - label:
-                text: "HA"
+                text: "\uF1EB"
                 id: lbl_hastatus
                 hidden: true
                 align: CENTER
-                text_font: montserrat_10
+                text_font: icons_10
                 styles: top_layer_style
 
       # Battery % (clickable)
@@ -1149,135 +1156,127 @@ lvgl:
 
   # ============== BATTERY MODAL ==============
       - obj:
-          id: modal_battery_bg
-          hidden: true
-          align: CENTER
-          width: 320
-          height: 220
-          bg_color: 0x000000
-          bg_opa: TRANSP
-          on_press:
-            then:
-              - script.execute: hide_battery_modal
+      id: modal_battery_bg
+      hidden: true
+      align: CENTER
+      width: 320
+      height: 220
+      bg_color: 0x000000
+      bg_opa: TRANSP
+      on_press:
+        then:
+          - script.execute: hide_battery_modal
 
-          widgets:
-            - obj:
-                id: modal_battery_box
-                align: CENTER
-                width: 280
-                height: 200
-                styles: modal_style
-                pad_all: 10
-                layout:
-                  type: FLEX
-                  flex_flow: COLUMN
+      widgets:
+        - obj:
+            id: modal_battery_box
+            align: CENTER
+            width: 280
+            height: 200
+            styles: modal_style
+            layout:
+              type: FLEX
+              flex_flow: COLUMN
+              pad_all: 10
+              pad_row: 8
 
-                widgets:
-                  - label:
-                      text: "Stan baterii"
-                      text_color: 0xFFFFFF
-                      text_font: montserrat_16
+            widgets:
+              - label:
+                  text: "Stan baterii"
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_16
 
-                  - label:
-                      text: "Poziom: "
-                      id: lbl_modal_battery_level
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "Poziom: "
+                  id: lbl_modal_battery_level
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - label:
-                      text: "Napięcie: "
-                      id: lbl_modal_battery_voltage
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "Napięcie: "
+                  id: lbl_modal_battery_voltage
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - label:
-                      text: "Prąd: "
-                      id: lbl_modal_battery_current
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "Prąd: "
+                  id: lbl_modal_battery_current
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - label:
-                      text: "Moc: "
-                      id: lbl_modal_battery_power
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "Moc: "
+                  id: lbl_modal_battery_power
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - obj:
-                      bg_color: 0x555555
-                      width: 100
-                      height: 40
-                      on_press:
-                        then:
-                          - script.execute: hide_battery_modal
-                      widgets:
-                        - label:
-                            text: "Zamknij"
-                            text_color: 0xFFFFFF
-                            text_font: montserrat_12
-                            align: CENTER
+              - button:
+                  text: "Zamknij"
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_12
+                  bg_color: 0x555555
+                  on_press:
+                    then:
+                      - script.execute: hide_battery_modal
 
   # ============== API MODAL ==============
       - obj:
-          id: modal_api_bg
-          hidden: true
-          align: CENTER
-          width: 320
-          height: 220
-          bg_color: 0x000000
-          bg_opa: TRANSP
-          on_press:
-            then:
-              - script.execute: hide_api_modal
+      id: modal_api_bg
+      hidden: true
+      align: CENTER
+      width: 320
+      height: 220
+      bg_color: 0x000000
+      bg_opa: TRANSP
+      on_press:
+        then:
+          - script.execute: hide_api_modal
 
-          widgets:
-            - obj:
-                id: modal_api_box
-                align: CENTER
-                width: 280
-                height: 200
-                styles: modal_style
-                pad_all: 10
-                layout:
-                  type: FLEX
-                  flex_flow: COLUMN
+      widgets:
+        - obj:
+            id: modal_api_box
+            align: CENTER
+            width: 280
+            height: 200
+            styles: modal_style
+            layout:
+              type: FLEX
+              flex_flow: COLUMN
+              pad_all: 10
+              pad_row: 8
 
-                widgets:
-                  - label:
-                      text: "Home Assistant API"
-                      text_color: 0xFFFFFF
-                      text_font: montserrat_16
+            widgets:
+              - label:
+                  text: "Home Assistant API"
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_16
 
-                  - label:
-                      text: "Stan: "
-                      id: lbl_modal_api_status
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "Stan: "
+                  id: lbl_modal_api_status
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - label:
-                      text: "WiFi dBm: "
-                      id: lbl_modal_api_wifi_dbm
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "WiFi dBm: "
+                  id: lbl_modal_api_wifi_dbm
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - label:
-                      text: "IP: "
-                      id: lbl_modal_api_ip
-                      text_color: 0xCCCCCC
-                      text_font: montserrat_12
+              - label:
+                  text: "IP: "
+                  id: lbl_modal_api_ip
+                  text_color: 0xCCCCCC
+                  text_font: montserrat_12
 
-                  - obj:
-                      bg_color: 0x555555
-                      width: 100
-                      height: 40
-                      on_press:
-                        then:
-                          - script.execute: hide_api_modal
-                      widgets:
-                        - label:
-                            text: "Zamknij"
-                            text_color: 0xFFFFFF
-                            text_font: montserrat_12
-                            align: CENTER
+              - button:
+                  text: "Zamknij"
+                  text_color: 0xFFFFFF
+                  text_font: montserrat_12
+                  bg_color: 0x555555
+                  on_press:
+                    then:
+                      - script.execute: hide_api_modal
 
 ########################################################
 # INTERVAL UPDATES (Consolidated)
