@@ -1,0 +1,121 @@
+# RemoteWebView + power/sleep integration module for Guition HMI setups.
+#
+# Integration hooks for existing configs:
+# - Add `- script.execute: rwv_resume_stream` at the end of your `wake_display` script.
+# - Add `- script.execute: rwv_pause_stream` inside `screen_sleep_display` (before turning off backlight is recommended).
+# - Use `rwv_enter_page` / `rwv_leave_page` from UI buttons for page-aware streaming.
+#
+# Required existing IDs in host config:
+# - display: ${rwv_display_id}
+# - touchscreen: ${rwv_touchscreen_id}
+# - light: backlight
+# - script: wake_display, switch_to_main_page (or change the scripts below)
+
+remote_webview:
+  id: rwv
+  display_id: ${rwv_display_id}
+  touchscreen_id: ${rwv_touchscreen_id}
+  server: ${rwv_server}
+  url: ${rwv_url}
+  full_frame_tile_count: ${rwv_full_frame_tile_count}
+  max_bytes_per_msg: ${rwv_max_bytes_per_msg}
+  jpeg_quality: ${rwv_jpeg_quality}
+  min_frame_interval: ${rwv_min_frame_interval}
+
+  # v1 power + latency features
+  latest_frame_wins: true
+  touch_wake_passthrough: true
+  stream_control_enabled: true
+  telemetry_log_interval_ms: 15000
+
+script:
+  - id: rwv_resume_stream
+    mode: restart
+    then:
+      - lambda: |-
+          id(rwv).set_stream_paused(false);
+          id(rwv).request_full_frame();
+
+  - id: rwv_pause_stream
+    mode: restart
+    then:
+      - lambda: |-
+          id(rwv).set_stream_paused(true);
+
+  - id: rwv_enter_page
+    mode: restart
+    then:
+      - script.execute: wake_display
+      - script.execute: rwv_resume_stream
+      # Optional: if your UI has this page id
+      - lvgl.page.show:
+          id: page_remote_webview
+
+  - id: rwv_leave_page
+    mode: restart
+    then:
+      - script.execute: rwv_pause_stream
+      # Optional: adjust to your home page id
+      - script.execute: switch_to_main_page
+
+text:
+  - platform: template
+    id: rwv_url
+    name: "Remote WebView URL"
+    optimistic: true
+    restore_value: false
+    mode: TEXT
+    min_length: 1
+    set_action:
+      - lambda: |-
+          if (!id(rwv).open_url(std::string(x.c_str()))) {
+            id(rwv).set_url(std::string(x.c_str()));
+            ESP_LOGI("remote_webview", "URL queued (not connected): %s", x.c_str());
+          }
+
+sensor:
+  - platform: template
+    id: rwv_decode_drops
+    name: "RWV Decode Drops"
+    update_interval: 5s
+    lambda: |-
+      return id(rwv).get_decode_drop_count();
+
+  - platform: template
+    id: rwv_decode_avg_ms
+    name: "RWV Decode Avg [ms]"
+    unit_of_measurement: "ms"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(rwv).get_decode_avg_ms();
+
+  - platform: template
+    id: rwv_render_avg_ms
+    name: "RWV Render Avg [ms]"
+    unit_of_measurement: "ms"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(rwv).get_render_avg_ms();
+
+  - platform: template
+    id: rwv_reconnect_count
+    name: "RWV Reconnect Count"
+    update_interval: 5s
+    lambda: |-
+      return id(rwv).get_reconnect_count();
+
+  - platform: template
+    id: rwv_last_frame_id
+    name: "RWV Last Frame ID"
+    update_interval: 5s
+    lambda: |-
+      return id(rwv).get_last_frame_id();
+
+binary_sensor:
+  - platform: template
+    id: rwv_stream_paused
+    name: "RWV Stream Paused"
+    lambda: |-
+      return id(rwv).is_stream_paused();

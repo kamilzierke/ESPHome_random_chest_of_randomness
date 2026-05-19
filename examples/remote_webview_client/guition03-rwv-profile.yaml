@@ -1,0 +1,15 @@
+# Profile overlay for Guition 03 (ESP32-S3 480x480)
+# Include this file from your main YAML (guitionhmi-03 style setup).
+
+substitutions:
+  rwv_display_id: main_display
+  rwv_touchscreen_id: my_touchscreen
+  rwv_server: "172.16.0.252:8081"
+  rwv_url: "http://172.16.0.252:8123/dashboard-mobile/0"
+  rwv_full_frame_tile_count: "1"
+  rwv_max_bytes_per_msg: "61440"
+  rwv_jpeg_quality: "82"
+  rwv_min_frame_interval: "70"
+
+packages:
+  rwv_power: !include common-rwv-power.yaml

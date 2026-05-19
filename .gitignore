@@ -3,3 +3,16 @@
 # You can modify this file to suit your needs.
 /.esphome/
 /secrets.yaml
+
+# Node / TypeScript artifacts
+node_modules/
+dist/
+coverage/
+
+# Python / ESPHome generated caches
+__pycache__/
+*.pyc
+
+# PlatformIO / ESPHome build caches
+.platformio/
+.esphome-test/
