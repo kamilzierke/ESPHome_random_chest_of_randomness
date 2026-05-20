@@ -100,6 +100,12 @@ void RemoteWebView::dump_config() {
 
   if (display_) {
     ESP_LOGCONFIG(TAG, "  display: %dx%d", display_->get_width(), display_->get_height());
+    const uint32_t display_update_interval = display_->get_update_interval();
+    if (display_update_interval != SCHEDULER_DONT_RUN) {
+      ESP_LOGW(TAG, "display update_interval is active (%u ms). Remote WebView displays should use "
+                    "update_interval: never to avoid periodic redraw/clear artifacts.",
+               (unsigned) display_update_interval);
+    }
   }
 
 #if REMOTE_WEBVIEW_HW_JPEG

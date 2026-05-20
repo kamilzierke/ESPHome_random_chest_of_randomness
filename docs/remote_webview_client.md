@@ -210,6 +210,24 @@ packages:
 
 If your device YAML already has custom `lvgl.on_idle` or `lvgl.on_resume` actions, merge the actions intentionally instead of including two independent idle policies.
 
+## Display Configuration Guardrails
+
+Remote WebView draws decoded tiles directly into the ESPHome display. The display should not also run its normal periodic redraw loop, because that can clear or overwrite Remote WebView tiles and look like flicker, tearing or jumping.
+
+Recommended display settings:
+
+```yaml
+display:
+  - platform: ...
+    id: panel_display
+    update_interval: never
+    auto_clear_enabled: false
+```
+
+`update_interval: never` disables the display poller. The Remote WebView component logs a warning during `dump_config()` if the display still has an active update interval.
+
+`auto_clear_enabled: false` prevents ESPHome display rendering from clearing the framebuffer before a display lambda/page draw. ESPHome does not expose this value through the runtime display API, so Remote WebView cannot detect it reliably; keep it explicit in the device YAML.
+
 ## Diagnostics
 
 For logs, enable:

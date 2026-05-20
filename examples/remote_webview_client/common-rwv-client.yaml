@@ -3,6 +3,10 @@
 # Include this package once. If your device YAML already has a `packages:`
 # section, add this file there and do not define `remote_webview:` again in the
 # same device YAML. Configure it through substitutions instead.
+#
+# The referenced display should be configured in the device YAML with:
+#   update_interval: never
+#   auto_clear_enabled: false
 
 substitutions:
   rwv_display_id: panel_display
