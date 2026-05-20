@@ -79,3 +79,14 @@ The server logs effective per-device config:
 ```
 
 If these values match add-on defaults instead of ESPHome YAML, the ESPHome firmware is probably using a cached or old external component build.
+
+## Client Diagnostics
+
+The server remains the source of effective render settings, but ESPHome can expose client-side diagnostics as native Home Assistant entities under the `remote_webview:` component. These are configured in the ESPHome YAML with `sensors:` and `binary_sensors:`; they do not require any add-on option.
+
+Use them to correlate server logs with client behavior:
+
+- `connected` should match server connect/disconnect logs.
+- `frames_received`, `tiles_received`, and `fps` show whether the ESP is receiving new frame data.
+- `decode_avg_ms`, `last_decode_ms`, and `queue_depth` show whether the ESP decode side is the bottleneck.
+- `decode_drops` indicates local queue pressure or an overloaded client.

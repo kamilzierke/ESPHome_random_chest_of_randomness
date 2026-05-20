@@ -2,6 +2,12 @@
 #include "esphome/core/component.h"
 #include "esphome/components/display/display.h"
 #include "esphome/components/touchscreen/touchscreen.h"
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
+#ifdef USE_BINARY_SENSOR
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#endif
 #include "JPEGDEC.h"
 #include "protocol.h"
 #include "remote_webview_config.h"
@@ -49,6 +55,24 @@ class RemoteWebView : public Component {
   void set_touch_wake_passthrough(bool v) { touch_wake_passthrough_ = v; }
   void set_stream_control_enabled(bool v) { stream_control_enabled_ = v; }
   void set_telemetry_log_interval_ms(uint32_t v) { telemetry_log_interval_ms_ = v; }
+#ifdef USE_SENSOR
+  void set_decode_avg_ms_sensor(sensor::Sensor *s) { decode_avg_ms_sensor_ = s; }
+  void set_last_decode_ms_sensor(sensor::Sensor *s) { last_decode_ms_sensor_ = s; }
+  void set_render_avg_ms_sensor(sensor::Sensor *s) { render_avg_ms_sensor_ = s; }
+  void set_decode_drops_sensor(sensor::Sensor *s) { decode_drops_sensor_ = s; }
+  void set_reconnect_count_sensor(sensor::Sensor *s) { reconnect_count_sensor_ = s; }
+  void set_last_frame_id_sensor(sensor::Sensor *s) { last_frame_id_sensor_ = s; }
+  void set_bytes_received_sensor(sensor::Sensor *s) { bytes_received_sensor_ = s; }
+  void set_frames_received_sensor(sensor::Sensor *s) { frames_received_sensor_ = s; }
+  void set_tiles_received_sensor(sensor::Sensor *s) { tiles_received_sensor_ = s; }
+  void set_fps_sensor(sensor::Sensor *s) { fps_sensor_ = s; }
+  void set_queue_depth_sensor(sensor::Sensor *s) { queue_depth_sensor_ = s; }
+#endif
+#ifdef USE_BINARY_SENSOR
+  void set_connected_binary_sensor(binary_sensor::BinarySensor *s) { connected_binary_sensor_ = s; }
+  void set_stream_paused_binary_sensor(binary_sensor::BinarySensor *s) { stream_paused_binary_sensor_ = s; }
+  void set_touch_enabled_binary_sensor(binary_sensor::BinarySensor *s) { touch_enabled_binary_sensor_ = s; }
+#endif
 
   void disable_touch(bool disable);
   bool open_url(const std::string &s);
@@ -66,7 +90,7 @@ class RemoteWebView : public Component {
   uint32_t get_reconnect_count() const { return reconnect_count_; }
 
   void setup() override;
-  void loop() override {}
+  void loop() override { maybe_publish_diagnostics_(); }
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
 
@@ -112,6 +136,7 @@ class RemoteWebView : public Component {
   bool stream_control_enabled_{false};
   uint32_t telemetry_log_interval_ms_{0};
   bool stream_paused_{false};
+  bool ws_connected_{false};
 
 #if REMOTE_WEBVIEW_HW_JPEG
   jpeg_decoder_handle_t hw_dec_{nullptr};
@@ -140,7 +165,33 @@ class RemoteWebView : public Component {
   uint32_t last_frame_id_{0xffffffffu};
   uint32_t reconnect_count_{0};
   uint64_t last_telemetry_log_us_{0};
+  uint64_t last_diagnostic_publish_us_{0};
+  uint64_t last_fps_sample_us_{0};
+  uint32_t last_fps_frame_count_{0};
+  float fps_{0.0f};
   bool ws_connected_once_{false};
+  uint32_t bytes_received_{0};
+  uint32_t frames_received_{0};
+  uint32_t tiles_received_{0};
+
+#ifdef USE_SENSOR
+  sensor::Sensor *decode_avg_ms_sensor_{nullptr};
+  sensor::Sensor *last_decode_ms_sensor_{nullptr};
+  sensor::Sensor *render_avg_ms_sensor_{nullptr};
+  sensor::Sensor *decode_drops_sensor_{nullptr};
+  sensor::Sensor *reconnect_count_sensor_{nullptr};
+  sensor::Sensor *last_frame_id_sensor_{nullptr};
+  sensor::Sensor *bytes_received_sensor_{nullptr};
+  sensor::Sensor *frames_received_sensor_{nullptr};
+  sensor::Sensor *tiles_received_sensor_{nullptr};
+  sensor::Sensor *fps_sensor_{nullptr};
+  sensor::Sensor *queue_depth_sensor_{nullptr};
+#endif
+#ifdef USE_BINARY_SENSOR
+  binary_sensor::BinarySensor *connected_binary_sensor_{nullptr};
+  binary_sensor::BinarySensor *stream_paused_binary_sensor_{nullptr};
+  binary_sensor::BinarySensor *touch_enabled_binary_sensor_{nullptr};
+#endif
 
   QueueHandle_t     q_decode_{nullptr};
   SemaphoreHandle_t ws_send_mtx_{nullptr};
@@ -175,6 +226,10 @@ class RemoteWebView : public Component {
   void clear_decode_queue_();
   void apply_stream_state_();
   void maybe_log_telemetry_();
+  void maybe_publish_diagnostics_();
+  void publish_connection_state_();
+  void publish_stream_paused_state_();
+  void publish_touch_enabled_state_();
 
   std::string resolve_device_id_() const;
   std::string build_ws_uri_() const;

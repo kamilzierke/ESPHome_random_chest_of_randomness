@@ -30,6 +30,38 @@ remote_webview:
   stream_control_enabled: true
   touch_wake_passthrough: true
   telemetry_log_interval_ms: 5000
+
+  sensors:
+    decode_avg_ms:
+      name: "RWV Decode Avg"
+    last_decode_ms:
+      name: "RWV Last Decode"
+    render_avg_ms:
+      name: "RWV Render Avg"
+    decode_drops:
+      name: "RWV Decode Drops"
+    reconnect_count:
+      name: "RWV Reconnect Count"
+    last_frame_id:
+      name: "RWV Last Frame ID"
+    bytes_received:
+      name: "RWV Bytes Received"
+    frames_received:
+      name: "RWV Frames Received"
+    tiles_received:
+      name: "RWV Tiles Received"
+    fps:
+      name: "RWV FPS"
+    queue_depth:
+      name: "RWV Queue Depth"
+
+  binary_sensors:
+    connected:
+      name: "RWV Connected"
+    stream_paused:
+      name: "RWV Stream Paused"
+    touch_enabled:
+      name: "RWV Touch Enabled"
 ```
 
 ## Client and Server Parameter Contract
@@ -64,6 +96,8 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `stream_control_enabled` - enables pause/resume/keyframe commands from ESP to server.
 - `touch_wake_passthrough` - when paused, first touch resumes stream and is forwarded if true; if false, the component drops touch events while paused.
 - `telemetry_log_interval_ms` - local telemetry log interval.
+- `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior.
+- `binary_sensors` - optional ESPHome native state entities for connection, stream pause and touch enable state.
 
 ## Runtime Hooks
 
@@ -82,7 +116,7 @@ Use ESPHome scripts to turn the backlight off and pause the stream after inactiv
 
 ## Diagnostics
 
-Enable:
+For logs, enable:
 
 ```yaml
 telemetry_log_interval_ms: 5000
@@ -95,3 +129,25 @@ Watch:
 - `render_avg` - frame rendering time.
 - `last_frame` - whether frames are advancing.
 - `reconnects` - WebSocket stability.
+
+For Home Assistant entities, configure the optional `sensors:` and `binary_sensors:` blocks under `remote_webview`. Sensor updates are throttled to `telemetry_log_interval_ms`, with a minimum interval of 1 second. If `telemetry_log_interval_ms` is `0`, diagnostic entities still publish at roughly 1 Hz.
+
+Available numeric sensors:
+
+- `decode_avg_ms` - rolling average JPEG decode time on the ESP.
+- `last_decode_ms` - last frame packet decode time.
+- `render_avg_ms` - average frame render time reported by the client.
+- `decode_drops` - packets dropped before decode.
+- `reconnect_count` - reconnect count after the first successful connection.
+- `last_frame_id` - last received frame id.
+- `bytes_received` - total binary WebSocket payload bytes received by the client.
+- `frames_received` - number of distinct frame ids seen by the client.
+- `tiles_received` - total tile headers received.
+- `fps` - client-side frame rate estimate based on received frame ids.
+- `queue_depth` - current decode queue depth.
+
+Available binary sensors:
+
+- `connected` - WebSocket connection state.
+- `stream_paused` - local stream pause state.
+- `touch_enabled` - inverse of `disable_touch(...)`.

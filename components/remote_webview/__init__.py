@@ -1,10 +1,23 @@
 import re
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import display, touchscreen
+from esphome.components import binary_sensor, display, sensor, touchscreen
 from esphome.components.esp32 import add_idf_component
 from esphome.components.display import validate_rotation
-from esphome.const import CONF_ID, CONF_DISPLAY_ID, CONF_URL, CONF_ROTATION
+from esphome.const import (
+    CONF_ID,
+    CONF_DISPLAY_ID,
+    CONF_URL,
+    CONF_ROTATION,
+    DEVICE_CLASS_CONNECTIVITY,
+    DEVICE_CLASS_DURATION,
+    ENTITY_CATEGORY_DIAGNOSTIC,
+    ICON_COUNTER,
+    ICON_TIMER,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_BYTES,
+    UNIT_MILLISECOND,
+)
 
 
 CONF_DEVICE_ID = "device_id"
@@ -23,13 +36,77 @@ CONF_LATEST_FRAME_WINS = "latest_frame_wins"
 CONF_TOUCH_WAKE_PASSTHROUGH = "touch_wake_passthrough"
 CONF_STREAM_CONTROL_ENABLED = "stream_control_enabled"
 CONF_TELEMETRY_LOG_INTERVAL_MS = "telemetry_log_interval_ms"
+CONF_SENSORS = "sensors"
+CONF_BINARY_SENSORS = "binary_sensors"
+CONF_DECODE_AVG_MS = "decode_avg_ms"
+CONF_LAST_DECODE_MS = "last_decode_ms"
+CONF_RENDER_AVG_MS = "render_avg_ms"
+CONF_DECODE_DROPS = "decode_drops"
+CONF_RECONNECT_COUNT = "reconnect_count"
+CONF_LAST_FRAME_ID = "last_frame_id"
+CONF_BYTES_RECEIVED = "bytes_received"
+CONF_FRAMES_RECEIVED = "frames_received"
+CONF_TILES_RECEIVED = "tiles_received"
+CONF_FPS = "fps"
+CONF_QUEUE_DEPTH = "queue_depth"
+CONF_CONNECTED = "connected"
+CONF_STREAM_PAUSED = "stream_paused"
+CONF_TOUCH_ENABLED = "touch_enabled"
 
 _SERVER_RE = re.compile(
     r"^(?P<host>[A-Za-z0-9](?:[A-Za-z0-9\-\.]*[A-Za-z0-9])?)\:(?P<port>\d{1,5})$"
 )
 
-AUTO_LOAD = []
 DEPENDENCIES = ["display"]
+
+
+def AUTO_LOAD(config):
+    components = []
+    if CONF_SENSORS in config:
+        components.append("sensor")
+    if CONF_BINARY_SENSORS in config:
+        components.append("binary_sensor")
+    return components
+
+DIAGNOSTIC_COUNT_SCHEMA = sensor.sensor_schema(
+    accuracy_decimals=0,
+    icon=ICON_COUNTER,
+    state_class=STATE_CLASS_MEASUREMENT,
+    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+)
+
+DIAGNOSTIC_MS_SCHEMA = sensor.sensor_schema(
+    unit_of_measurement=UNIT_MILLISECOND,
+    accuracy_decimals=0,
+    device_class=DEVICE_CLASS_DURATION,
+    state_class=STATE_CLASS_MEASUREMENT,
+    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    icon=ICON_TIMER,
+)
+
+DIAGNOSTIC_BINARY_SCHEMA = binary_sensor.binary_sensor_schema(
+    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+)
+
+SENSOR_SETTERS = {
+    CONF_DECODE_AVG_MS: "set_decode_avg_ms_sensor",
+    CONF_LAST_DECODE_MS: "set_last_decode_ms_sensor",
+    CONF_RENDER_AVG_MS: "set_render_avg_ms_sensor",
+    CONF_DECODE_DROPS: "set_decode_drops_sensor",
+    CONF_RECONNECT_COUNT: "set_reconnect_count_sensor",
+    CONF_LAST_FRAME_ID: "set_last_frame_id_sensor",
+    CONF_BYTES_RECEIVED: "set_bytes_received_sensor",
+    CONF_FRAMES_RECEIVED: "set_frames_received_sensor",
+    CONF_TILES_RECEIVED: "set_tiles_received_sensor",
+    CONF_FPS: "set_fps_sensor",
+    CONF_QUEUE_DEPTH: "set_queue_depth_sensor",
+}
+
+BINARY_SENSOR_SETTERS = {
+    CONF_CONNECTED: "set_connected_binary_sensor",
+    CONF_STREAM_PAUSED: "set_stream_paused_binary_sensor",
+    CONF_TOUCH_ENABLED: "set_touch_enabled_binary_sensor",
+}
 
 
 def validate_host_port(value):
@@ -72,6 +149,43 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_TOUCH_WAKE_PASSTHROUGH, default=False): cv.boolean,
         cv.Optional(CONF_STREAM_CONTROL_ENABLED, default=False): cv.boolean,
         cv.Optional(CONF_TELEMETRY_LOG_INTERVAL_MS, default=0): cv.int_range(min=0),
+        cv.Optional(CONF_SENSORS): cv.Schema(
+            {
+                cv.Optional(CONF_DECODE_AVG_MS): DIAGNOSTIC_MS_SCHEMA,
+                cv.Optional(CONF_LAST_DECODE_MS): DIAGNOSTIC_MS_SCHEMA,
+                cv.Optional(CONF_RENDER_AVG_MS): DIAGNOSTIC_MS_SCHEMA,
+                cv.Optional(CONF_DECODE_DROPS): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_RECONNECT_COUNT): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_LAST_FRAME_ID): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_BYTES_RECEIVED): sensor.sensor_schema(
+                    unit_of_measurement=UNIT_BYTES,
+                    accuracy_decimals=0,
+                    icon=ICON_COUNTER,
+                    state_class=STATE_CLASS_MEASUREMENT,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_FRAMES_RECEIVED): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_TILES_RECEIVED): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_FPS): sensor.sensor_schema(
+                    unit_of_measurement="fps",
+                    accuracy_decimals=1,
+                    icon=ICON_COUNTER,
+                    state_class=STATE_CLASS_MEASUREMENT,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_QUEUE_DEPTH): DIAGNOSTIC_COUNT_SCHEMA,
+            }
+        ),
+        cv.Optional(CONF_BINARY_SENSORS): cv.Schema(
+            {
+                cv.Optional(CONF_CONNECTED): binary_sensor.binary_sensor_schema(
+                    device_class=DEVICE_CLASS_CONNECTIVITY,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_STREAM_PAUSED): DIAGNOSTIC_BINARY_SCHEMA,
+                cv.Optional(CONF_TOUCH_ENABLED): DIAGNOSTIC_BINARY_SCHEMA,
+            }
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -119,5 +233,15 @@ async def to_code(config):
     cg.add(var.set_touch_wake_passthrough(config[CONF_TOUCH_WAKE_PASSTHROUGH]))
     cg.add(var.set_stream_control_enabled(config[CONF_STREAM_CONTROL_ENABLED]))
     cg.add(var.set_telemetry_log_interval_ms(config[CONF_TELEMETRY_LOG_INTERVAL_MS]))
+
+    for key, setter in SENSOR_SETTERS.items():
+        if key in config.get(CONF_SENSORS, {}):
+            sens = await sensor.new_sensor(config[CONF_SENSORS][key])
+            cg.add(getattr(var, setter)(sens))
+
+    for key, setter in BINARY_SENSOR_SETTERS.items():
+        if key in config.get(CONF_BINARY_SENSORS, {}):
+            sens = await binary_sensor.new_binary_sensor(config[CONF_BINARY_SENSORS][key])
+            cg.add(getattr(var, setter)(sens))
 
     await cg.register_component(var, config)

@@ -48,6 +48,11 @@ void RemoteWebView::setup() {
     ESP_LOGD(TAG, "touch listener registered");
   }
 
+  publish_connection_state_();
+  publish_stream_paused_state_();
+  publish_touch_enabled_state_();
+  maybe_publish_diagnostics_();
+
 #if REMOTE_WEBVIEW_HW_JPEG
   jpeg_decode_engine_cfg_t jcfg = {
     .timeout_ms = 200,
@@ -154,6 +159,7 @@ void RemoteWebView::set_stream_paused(bool paused) {
     clear_decode_queue_();
 
   apply_stream_state_();
+  publish_stream_paused_state_();
   ESP_LOGD(TAG, "stream %s", paused ? "paused" : "resumed");
 }
 
@@ -216,6 +222,58 @@ void RemoteWebView::maybe_log_telemetry_() {
            stream_paused_ ? "true" : "false");
 }
 
+void RemoteWebView::maybe_publish_diagnostics_() {
+#if defined(USE_SENSOR)
+  const uint64_t now_us = esp_timer_get_time();
+  uint32_t interval_ms = telemetry_log_interval_ms_ > 0 ? telemetry_log_interval_ms_ : 1000;
+  if (interval_ms < 1000)
+    interval_ms = 1000;
+
+  const uint64_t interval_us = (uint64_t) interval_ms * 1000ULL;
+  if (last_diagnostic_publish_us_ != 0 && (now_us - last_diagnostic_publish_us_) < interval_us)
+    return;
+
+  if (last_fps_sample_us_ != 0 && now_us > last_fps_sample_us_) {
+    const uint32_t frame_delta = frames_received_ - last_fps_frame_count_;
+    const uint64_t elapsed_us = now_us - last_fps_sample_us_;
+    fps_ = elapsed_us > 0 ? (float) frame_delta * 1000000.0f / (float) elapsed_us : 0.0f;
+  }
+  last_fps_sample_us_ = now_us;
+  last_fps_frame_count_ = frames_received_;
+  last_diagnostic_publish_us_ = now_us;
+
+  if (decode_avg_ms_sensor_) decode_avg_ms_sensor_->publish_state((float) get_decode_avg_ms());
+  if (last_decode_ms_sensor_) last_decode_ms_sensor_->publish_state((float) last_decode_ms_);
+  if (render_avg_ms_sensor_) render_avg_ms_sensor_->publish_state((float) frame_render_avg_ms_);
+  if (decode_drops_sensor_) decode_drops_sensor_->publish_state((float) decode_drop_count_);
+  if (reconnect_count_sensor_) reconnect_count_sensor_->publish_state((float) reconnect_count_);
+  if (last_frame_id_sensor_) last_frame_id_sensor_->publish_state((float) last_frame_id_);
+  if (bytes_received_sensor_) bytes_received_sensor_->publish_state((float) bytes_received_);
+  if (frames_received_sensor_) frames_received_sensor_->publish_state((float) frames_received_);
+  if (tiles_received_sensor_) tiles_received_sensor_->publish_state((float) tiles_received_);
+  if (fps_sensor_) fps_sensor_->publish_state(fps_);
+  if (queue_depth_sensor_) queue_depth_sensor_->publish_state((float) (q_decode_ ? uxQueueMessagesWaiting(q_decode_) : 0));
+#endif
+}
+
+void RemoteWebView::publish_connection_state_() {
+#if defined(USE_BINARY_SENSOR)
+  if (connected_binary_sensor_) connected_binary_sensor_->publish_state(ws_connected_);
+#endif
+}
+
+void RemoteWebView::publish_stream_paused_state_() {
+#if defined(USE_BINARY_SENSOR)
+  if (stream_paused_binary_sensor_) stream_paused_binary_sensor_->publish_state(stream_paused_);
+#endif
+}
+
+void RemoteWebView::publish_touch_enabled_state_() {
+#if defined(USE_BINARY_SENSOR)
+  if (touch_enabled_binary_sensor_) touch_enabled_binary_sensor_->publish_state(!touch_disabled_);
+#endif
+}
+
 void RemoteWebView::start_ws_task_() {
   xTaskCreatePinnedToCore(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0);
 }
@@ -271,6 +329,7 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
     case WEBSOCKET_EVENT_CONNECTED:
       if (self_) {
         self_->ws_client_ = e->client;
+        self_->ws_connected_ = true;
         if (self_->ws_connected_once_) {
           self_->reconnect_count_++;
         } else {
@@ -278,6 +337,8 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
         }
         self_->last_keepalive_us_ = esp_timer_get_time();
         self_->apply_stream_state_();
+        self_->publish_connection_state_();
+        self_->maybe_publish_diagnostics_();
         if (!self_->url_.empty()) {
           self_->ws_send_open_url_(self_->url_.c_str(), 0);
         }
@@ -286,7 +347,11 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
       break;
 
     case WEBSOCKET_EVENT_DISCONNECTED:
-      if (self_) self_->ws_client_ = nullptr;
+      if (self_) {
+        self_->ws_client_ = nullptr;
+        self_->ws_connected_ = false;
+        self_->publish_connection_state_();
+      }
       ESP_LOGI(TAG, "[ws] disconnected");
       if (self_) self_->last_keepalive_us_ = 0; 
       reasm_reset_(*r);
@@ -295,7 +360,11 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
 
 #ifdef WEBSOCKET_EVENT_CLOSED
     case WEBSOCKET_EVENT_CLOSED:
-      if (self_) self_->ws_client_ = nullptr;
+      if (self_) {
+        self_->ws_client_ = nullptr;
+        self_->ws_connected_ = false;
+        self_->publish_connection_state_();
+      }
       ESP_LOGI(TAG, "[ws] closed");
       if (self_) self_->last_keepalive_us_ = 0; 
       reasm_reset_(*r);
@@ -340,6 +409,7 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
         WsMsg m;
         m.buf = r->buf; m.len = r->total; m.client = e->client;
         r->buf = nullptr; r->total = 0; r->filled = 0;
+        self_->bytes_received_ += (uint32_t) m.len;
         bool queued = false;
         if (self_->q_decode_) {
           if (xQueueSend(self_->q_decode_, &m, 0) == pdTRUE) {
@@ -364,6 +434,10 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
     }
 
     case WEBSOCKET_EVENT_ERROR:
+      if (self_) {
+        self_->ws_connected_ = false;
+        self_->publish_connection_state_();
+      }
       ESP_LOGE(TAG, "[ws] error: type=%d tls_err=%d tls_stack=%d",
                e->error_handle.error_type,
                e->error_handle.esp_tls_last_esp_err,
@@ -392,6 +466,7 @@ void RemoteWebView::decode_task_tramp_(void *arg) {
         self->decode_time_count_++;
         self->last_decode_ms_ = (uint32_t) (elapsed_us / 1000ULL);
         self->maybe_log_telemetry_();
+        self->maybe_publish_diagnostics_();
       }
       free(m.buf);
     }
@@ -427,12 +502,14 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
   if (fi.frame_id != frame_id_) {
     frame_id_ = fi.frame_id;
     last_frame_id_ = fi.frame_id;
+    frames_received_++;
     frame_tiles_ = 0;
     frame_bytes_ = 0;
     frame_start_us_ = esp_timer_get_time();
   }
   frame_bytes_ += len;
   frame_tiles_ += fi.tile_count;
+  tiles_received_ += fi.tile_count;
 
   for (uint16_t i = 0; i < fi.tile_count; i++) {
     proto::TileHeader th{};
@@ -706,6 +783,7 @@ void RemoteWebViewTouchListener::touch(touchscreen::TouchPoint tp) {
 
 void RemoteWebView::disable_touch(bool disable) {
   touch_disabled_ = disable;
+  publish_touch_enabled_state_();
   ESP_LOGD(TAG, "touch %s", disable ? "disabled" : "enabled");
 }
 
