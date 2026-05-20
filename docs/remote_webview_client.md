@@ -157,6 +157,7 @@ The packages are intentionally split:
 - `common-rwv-client.yaml` - only the `remote_webview:` component and stream/render substitutions.
 - `common-rwv-diagnostics.yaml` - native ESPHome sensors, binary sensors and controls.
 - `common-rwv-power.yaml` - backlight, wake/sleep scripts and optional frame watchdog.
+- `common-rwv-lvgl-idle.yaml` - optional LVGL idle/pause/resume integration for configs that already use LVGL.
 
 Use ESPHome scripts to turn the backlight off and pause the stream after inactivity. See `examples/remote_webview_client/common-rwv-power.yaml`.
 
@@ -183,6 +184,31 @@ touchscreen:
       then:
         - script.execute: rwv_touch_activity
 ```
+
+### Optional LVGL Idle Integration
+
+Use `examples/remote_webview_client/common-rwv-lvgl-idle.yaml` only when the device YAML already has an `lvgl:` section. This package does not define LVGL displays, touchscreens or pages; it only adds idle and resume hooks:
+
+- after `${rwv_lvgl_idle_dim_after}` it dims `${rwv_backlight_id}`;
+- after `${rwv_lvgl_idle_sleep_after}` it pauses the Remote WebView stream, turns the backlight off and calls `lvgl.pause`;
+- on LVGL resume it turns the backlight on, resumes the stream and requests a full frame;
+- `rwv_lvgl_resume_on_input` controls whether LVGL input wakes a paused LVGL instance.
+
+Example:
+
+```yaml
+substitutions:
+  rwv_backlight_id: backlight
+  rwv_lvgl_idle_dim_after: "30s"
+  rwv_lvgl_idle_sleep_after: "60s"
+  rwv_lvgl_pause_show_snow: "false"
+
+packages:
+  rwv_client: !include common-rwv-client.yaml
+  rwv_lvgl_idle: !include common-rwv-lvgl-idle.yaml
+```
+
+If your device YAML already has custom `lvgl.on_idle` or `lvgl.on_resume` actions, merge the actions intentionally instead of including two independent idle policies.
 
 ## Diagnostics
 

@@ -1,0 +1,57 @@
+# Optional Remote WebView + LVGL idle integration package.
+#
+# Include this package only in device configs that already use LVGL. It extends
+# the existing `lvgl:` section with idle/pause/resume hooks and does not make
+# LVGL a dependency of the Remote WebView component itself.
+#
+# Required packages/IDs:
+# - common-rwv-client.yaml, because this package calls id(rwv)
+# - light: ${rwv_backlight_id}
+# - lvgl: displays/touchscreens/pages defined by the device YAML
+#
+# If the device YAML already has custom `lvgl.on_idle` or `lvgl.on_resume`
+# automations, merge those actions consciously instead of including two
+# competing idle policies.
+
+substitutions:
+  rwv_backlight_id: display_backlight
+  rwv_lvgl_idle_dim_after: "30s"
+  rwv_lvgl_idle_sleep_after: "60s"
+  rwv_lvgl_dim_brightness: "25%"
+  rwv_lvgl_wake_brightness: "100%"
+  rwv_lvgl_dim_transition: "750ms"
+  rwv_lvgl_wake_transition: "500ms"
+  rwv_lvgl_sleep_transition: "1s"
+  rwv_lvgl_pause_show_snow: "false"
+  rwv_lvgl_resume_on_input: "true"
+
+lvgl:
+  resume_on_input: ${rwv_lvgl_resume_on_input}
+
+  on_idle:
+    - timeout: ${rwv_lvgl_idle_dim_after}
+      then:
+        - light.turn_on:
+            id: ${rwv_backlight_id}
+            brightness: ${rwv_lvgl_dim_brightness}
+            transition_length: ${rwv_lvgl_dim_transition}
+
+    - timeout: ${rwv_lvgl_idle_sleep_after}
+      then:
+        - lambda: |-
+            id(rwv).set_stream_paused(true);
+        - light.turn_off:
+            id: ${rwv_backlight_id}
+            transition_length: ${rwv_lvgl_sleep_transition}
+        - lvgl.pause:
+            show_snow: ${rwv_lvgl_pause_show_snow}
+
+  on_resume:
+    then:
+      - light.turn_on:
+          id: ${rwv_backlight_id}
+          brightness: ${rwv_lvgl_wake_brightness}
+          transition_length: ${rwv_lvgl_wake_transition}
+      - lambda: |-
+          id(rwv).set_stream_paused(false);
+          id(rwv).request_full_frame();
