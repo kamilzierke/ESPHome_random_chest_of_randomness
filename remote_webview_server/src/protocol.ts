@@ -9,7 +9,7 @@
 //   [type u8=2][ver u8=1][subtype u8][pointer_id u8][x u16][y u16]
 //
 // FrameStats message:
-//   [type u8=3][ver u8=1][frame_render_time_ms u16]
+//   [type u8=3][ver u8=1][avg_time u32][bytes u32]
 //
 // OpenURL message:
 //   [type u8=4][ver u8=1][flags u16][url_len u32][url utf8 bytes...]
