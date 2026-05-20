@@ -1,121 +1,122 @@
-# RemoteWebView + power/sleep integration module for Guition HMI setups.
+# Remote WebView power/backlight package.
 #
-# Integration hooks for existing configs:
-# - Add `- script.execute: rwv_resume_stream` at the end of your `wake_display` script.
-# - Add `- script.execute: rwv_pause_stream` inside `screen_sleep_display` (before turning off backlight is recommended).
-# - Use `rwv_enter_page` / `rwv_leave_page` from UI buttons for page-aware streaming.
+# Include this package together with common-rwv-client.yaml. This file only
+# handles display wake/sleep/backlight behavior. Remote WebView configuration
+# and diagnostic entities live in separate packages.
 #
-# Required existing IDs in host config:
-# - display: ${rwv_display_id}
-# - touchscreen: ${rwv_touchscreen_id}
-# - light: backlight
-# - script: wake_display, switch_to_main_page (or change the scripts below)
+# Required IDs in the host device YAML:
+# - light: ${rwv_backlight_id}
+#
+# Recommended host hook:
+#
+# touchscreen:
+#   - platform: ...
+#     id: panel_touch
+#     on_touch:
+#       then:
+#         - script.execute: rwv_touch_activity
 
-remote_webview:
-  id: rwv
-  display_id: ${rwv_display_id}
-  touchscreen_id: ${rwv_touchscreen_id}
-  server: ${rwv_server}
-  url: ${rwv_url}
-  full_frame_tile_count: ${rwv_full_frame_tile_count}
-  max_bytes_per_msg: ${rwv_max_bytes_per_msg}
-  jpeg_quality: ${rwv_jpeg_quality}
-  min_frame_interval: ${rwv_min_frame_interval}
+substitutions:
+  rwv_backlight_id: display_backlight
+  rwv_idle_dim_after: "30s"
+  rwv_idle_sleep_after: "60s"
+  rwv_idle_sleep_after_dim: "30s"
+  rwv_backlight_wake_brightness: "100%"
+  rwv_backlight_dim_brightness: "25%"
+  rwv_backlight_wake_transition: "500ms"
+  rwv_backlight_dim_transition: "750ms"
+  rwv_backlight_sleep_transition: "1s"
+  # dim_then_off: dim first, then pause stream and turn the backlight off.
+  # off: keep full brightness until sleep, then pause stream and turn off.
+  rwv_sleep_mode: "dim_then_off"
+  rwv_watchdog_interval: "30s"
+  rwv_watchdog_missed_intervals: "0"
 
-  # v1 power + latency features
-  latest_frame_wins: true
-  touch_wake_passthrough: true
-  stream_control_enabled: true
-  telemetry_log_interval_ms: 15000
+globals:
+  - id: rwv_watchdog_last_frame_id
+    type: uint32_t
+    restore_value: false
+    initial_value: "0xffffffffu"
+
+  - id: rwv_watchdog_missed_count
+    type: uint16_t
+    restore_value: false
+    initial_value: "0"
 
 script:
-  - id: rwv_resume_stream
+  - id: rwv_idle_timer
     mode: restart
     then:
-      - lambda: |-
-          id(rwv).set_stream_paused(false);
-          id(rwv).request_full_frame();
+      - if:
+          condition:
+            lambda: |-
+              return std::string("${rwv_sleep_mode}") == "dim_then_off";
+          then:
+            - delay: ${rwv_idle_dim_after}
+            - script.execute: rwv_dim
+            - delay: ${rwv_idle_sleep_after_dim}
+            - script.execute: rwv_sleep
+          else:
+            - delay: ${rwv_idle_sleep_after}
+            - script.execute: rwv_sleep
 
-  - id: rwv_pause_stream
+  - id: rwv_dim
+    mode: restart
+    then:
+      - light.turn_on:
+          id: ${rwv_backlight_id}
+          brightness: ${rwv_backlight_dim_brightness}
+          transition_length: ${rwv_backlight_dim_transition}
+
+  - id: rwv_sleep
     mode: restart
     then:
       - lambda: |-
           id(rwv).set_stream_paused(true);
+      - light.turn_off:
+          id: ${rwv_backlight_id}
+          transition_length: ${rwv_backlight_sleep_transition}
 
-  - id: rwv_enter_page
+  - id: rwv_wake
     mode: restart
     then:
-      - script.execute: wake_display
-      - script.execute: rwv_resume_stream
-      # Optional: if your UI has this page id
-      - lvgl.page.show:
-          id: page_remote_webview
-
-  - id: rwv_leave_page
-    mode: restart
-    then:
-      - script.execute: rwv_pause_stream
-      # Optional: adjust to your home page id
-      - script.execute: switch_to_main_page
-
-text:
-  - platform: template
-    id: rwv_url
-    name: "Remote WebView URL"
-    optimistic: true
-    restore_value: false
-    mode: TEXT
-    min_length: 1
-    set_action:
+      - light.turn_on:
+          id: ${rwv_backlight_id}
+          brightness: ${rwv_backlight_wake_brightness}
+          transition_length: ${rwv_backlight_wake_transition}
       - lambda: |-
-          if (!id(rwv).open_url(std::string(x.c_str()))) {
-            id(rwv).set_url(std::string(x.c_str()));
-            ESP_LOGI("remote_webview", "URL queued (not connected): %s", x.c_str());
+          id(rwv).set_stream_paused(false);
+          id(rwv).request_full_frame();
+      - script.execute: rwv_idle_timer
+
+  - id: rwv_touch_activity
+    mode: restart
+    then:
+      - script.execute: rwv_wake
+
+interval:
+  - interval: ${rwv_watchdog_interval}
+    then:
+      - lambda: |-
+          const uint16_t limit = (uint16_t) ${rwv_watchdog_missed_intervals};
+          if (limit == 0 || id(rwv).is_stream_paused()) {
+            id(rwv_watchdog_missed_count) = 0;
+            id(rwv_watchdog_last_frame_id) = id(rwv).get_last_frame_id();
+            return;
           }
 
-sensor:
-  - platform: template
-    id: rwv_decode_drops
-    name: "RWV Decode Drops"
-    update_interval: 5s
-    lambda: |-
-      return id(rwv).get_decode_drop_count();
+          const uint32_t current = id(rwv).get_last_frame_id();
+          if (current == id(rwv_watchdog_last_frame_id)) {
+            if (id(rwv_watchdog_missed_count) < 0xffff) {
+              id(rwv_watchdog_missed_count)++;
+            }
+          } else {
+            id(rwv_watchdog_missed_count) = 0;
+            id(rwv_watchdog_last_frame_id) = current;
+          }
 
-  - platform: template
-    id: rwv_decode_avg_ms
-    name: "RWV Decode Avg [ms]"
-    unit_of_measurement: "ms"
-    accuracy_decimals: 0
-    update_interval: 5s
-    lambda: |-
-      return id(rwv).get_decode_avg_ms();
-
-  - platform: template
-    id: rwv_render_avg_ms
-    name: "RWV Render Avg [ms]"
-    unit_of_measurement: "ms"
-    accuracy_decimals: 0
-    update_interval: 5s
-    lambda: |-
-      return id(rwv).get_render_avg_ms();
-
-  - platform: template
-    id: rwv_reconnect_count
-    name: "RWV Reconnect Count"
-    update_interval: 5s
-    lambda: |-
-      return id(rwv).get_reconnect_count();
-
-  - platform: template
-    id: rwv_last_frame_id
-    name: "RWV Last Frame ID"
-    update_interval: 5s
-    lambda: |-
-      return id(rwv).get_last_frame_id();
-
-binary_sensor:
-  - platform: template
-    id: rwv_stream_paused
-    name: "RWV Stream Paused"
-    lambda: |-
-      return id(rwv).is_stream_paused();
+          if (id(rwv_watchdog_missed_count) >= limit) {
+            id(rwv_watchdog_missed_count) = 0;
+            id(rwv).reconnect();
+            id(rwv).request_full_frame();
+          }

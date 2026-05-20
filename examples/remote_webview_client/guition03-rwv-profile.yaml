@@ -4,12 +4,30 @@
 substitutions:
   rwv_display_id: main_display
   rwv_touchscreen_id: my_touchscreen
-  rwv_server: "172.16.0.252:8081"
-  rwv_url: "http://172.16.0.252:8123/dashboard-mobile/0"
+  rwv_backlight_id: backlight
+  rwv_server: "192.168.1.100:8081"
+  rwv_url: "http://127.0.0.1:8123/dashboard-tablet01/0"
+  rwv_rotation: "0"
+  rwv_tile_size: "48"
   rwv_full_frame_tile_count: "1"
+  rwv_full_frame_area_threshold: "0.9"
+  rwv_full_frame_every: "150"
+  rwv_every_nth_frame: "1"
   rwv_max_bytes_per_msg: "61440"
   rwv_jpeg_quality: "82"
   rwv_min_frame_interval: "70"
+  rwv_idle_dim_after: "30s"
+  rwv_idle_sleep_after: "60s"
+  rwv_idle_sleep_after_dim: "30s"
+  rwv_backlight_wake_brightness: "100%"
+  rwv_backlight_dim_brightness: "25%"
+  rwv_backlight_wake_transition: "500ms"
+  rwv_backlight_dim_transition: "750ms"
+  rwv_backlight_sleep_transition: "1s"
+  rwv_sleep_mode: "dim_then_off"
+  rwv_watchdog_missed_intervals: "0"
 
 packages:
+  rwv_client: !include common-rwv-client.yaml
+  rwv_diagnostics: !include common-rwv-diagnostics.yaml
   rwv_power: !include common-rwv-power.yaml

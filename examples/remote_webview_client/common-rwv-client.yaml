@@ -1,0 +1,42 @@
+# Remote WebView client package.
+#
+# Include this package once. If your device YAML already has a `packages:`
+# section, add this file there and do not define `remote_webview:` again in the
+# same device YAML. Configure it through substitutions instead.
+
+substitutions:
+  rwv_display_id: panel_display
+  rwv_touchscreen_id: panel_touch
+  rwv_server: "192.168.1.100:8081"
+  rwv_url: "http://127.0.0.1:8123/dashboard-tablet01/0"
+  rwv_rotation: "0"
+  rwv_tile_size: "48"
+  rwv_full_frame_tile_count: "4"
+  rwv_full_frame_area_threshold: "0.9"
+  rwv_full_frame_every: "150"
+  rwv_every_nth_frame: "1"
+  rwv_min_frame_interval: "80"
+  rwv_jpeg_quality: "70"
+  rwv_max_bytes_per_msg: "61440"
+  rwv_touch_wake_passthrough: "false"
+  rwv_telemetry_log_interval_ms: "15000"
+
+remote_webview:
+  id: rwv
+  display_id: ${rwv_display_id}
+  touchscreen_id: ${rwv_touchscreen_id}
+  server: ${rwv_server}
+  url: ${rwv_url}
+  rotation: ${rwv_rotation}
+  tile_size: ${rwv_tile_size}
+  full_frame_tile_count: ${rwv_full_frame_tile_count}
+  full_frame_area_threshold: ${rwv_full_frame_area_threshold}
+  full_frame_every: ${rwv_full_frame_every}
+  every_nth_frame: ${rwv_every_nth_frame}
+  min_frame_interval: ${rwv_min_frame_interval}
+  jpeg_quality: ${rwv_jpeg_quality}
+  max_bytes_per_msg: ${rwv_max_bytes_per_msg}
+  latest_frame_wins: true
+  stream_control_enabled: true
+  touch_wake_passthrough: ${rwv_touch_wake_passthrough}
+  telemetry_log_interval_ms: ${rwv_telemetry_log_interval_ms}

@@ -18,6 +18,7 @@ remote_webview:
   id: rwv
   server: 192.168.1.100:8081
   url: http://127.0.0.1:8123/dashboard-tablet01/0
+  rotation: 0
   tile_size: 48
   full_frame_tile_count: 4
   full_frame_area_threshold: 0.9
@@ -134,7 +135,54 @@ The optional `controls:` block exposes the same runtime hooks as Home Assistant 
 
 ## Power Management
 
+Use ESPHome packages for reusable panel configuration. If your device YAML already has a `packages:` block, add these packages there and do not define `remote_webview:` again in the device YAML. Configure the package with substitutions.
+
+```yaml
+substitutions:
+  rwv_display_id: main_display
+  rwv_touchscreen_id: my_touchscreen
+  rwv_backlight_id: backlight
+  rwv_server: "192.168.1.100:8081"
+  rwv_url: "http://127.0.0.1:8123/dashboard-tablet01/0"
+  rwv_rotation: "0"
+
+packages:
+  rwv_client: !include common-rwv-client.yaml
+  rwv_diagnostics: !include common-rwv-diagnostics.yaml
+  rwv_power: !include common-rwv-power.yaml
+```
+
+The packages are intentionally split:
+
+- `common-rwv-client.yaml` - only the `remote_webview:` component and stream/render substitutions.
+- `common-rwv-diagnostics.yaml` - native ESPHome sensors, binary sensors and controls.
+- `common-rwv-power.yaml` - backlight, wake/sleep scripts and optional frame watchdog.
+
 Use ESPHome scripts to turn the backlight off and pause the stream after inactivity. See `examples/remote_webview_client/common-rwv-power.yaml`.
+
+The package provides:
+
+- `rwv_sleep` - pauses the stream and turns off `${rwv_backlight_id}`.
+- `rwv_wake` - turns on `${rwv_backlight_id}`, resumes the stream and requests a keyframe.
+- `rwv_touch_activity` - hook this from `touchscreen.on_touch` to wake the panel.
+- `rwv_idle_timer` - restartable inactivity timer.
+- `rwv_sleep_mode` - `dim_then_off` dims first, then sleeps; `off` keeps the panel on until sleep.
+- `rwv_idle_dim_after` - idle time before dimming in `dim_then_off` mode.
+- `rwv_idle_sleep_after_dim` - delay from dimming to sleep in `dim_then_off` mode.
+- `rwv_idle_sleep_after` - idle time before sleep in `off` mode.
+- `rwv_backlight_wake_transition`, `rwv_backlight_dim_transition`, `rwv_backlight_sleep_transition` - backlight transition lengths.
+- optional reconnect watchdog controlled by `${rwv_watchdog_missed_intervals}`. Keep it at `0` to disable it.
+
+Host configs need to provide a backlight `light` id and call `rwv_touch_activity` from the touchscreen:
+
+```yaml
+touchscreen:
+  - platform: ...
+    id: panel_touch
+    on_touch:
+      then:
+        - script.execute: rwv_touch_activity
+```
 
 ## Diagnostics
 
@@ -181,3 +229,5 @@ Available controls:
 - `request_keyframe_button`
 - `reconnect_button`
 - `debug_overlay_switch`
+
+`debug_overlay_switch` currently exposes local debug overlay state only. It does not yet enable server-side tile borders, changed-tile colors or latency heatmaps. Those require the planned debug overlay protocol/server work, because the current protocol only supports `PauseStream` and `RequestKeyframe` runtime commands.

@@ -42,7 +42,7 @@ remote_webview:
   telemetry_log_interval_ms: 5000
 ```
 
-See `docs/remote_webview_client.md` for the full parameter guide.
+See `docs/remote_webview_client.md` for the full parameter guide. The reusable examples in `examples/remote_webview_client` are split into client, diagnostics, and power packages; when using those packages, configure substitutions instead of duplicating `remote_webview:` in the device YAML.
 
 ### Home Assistant Add-on
 
