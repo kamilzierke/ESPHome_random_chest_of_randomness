@@ -62,6 +62,18 @@ remote_webview:
       name: "RWV Stream Paused"
     touch_enabled:
       name: "RWV Touch Enabled"
+
+  controls:
+    pause_switch:
+      name: "RWV Pause Stream"
+    touch_switch:
+      name: "RWV Touch Enabled"
+    request_keyframe_button:
+      name: "RWV Request Keyframe"
+    reconnect_button:
+      name: "RWV Reconnect"
+    debug_overlay_switch:
+      name: "RWV Debug Overlay"
 ```
 
 ## Client and Server Parameter Contract
@@ -98,6 +110,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `telemetry_log_interval_ms` - local telemetry log interval.
 - `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior.
 - `binary_sensors` - optional ESPHome native state entities for connection, stream pause and touch enable state.
+- `controls` - optional ESPHome native controls for pause, touch enable, keyframe request, reconnect and local debug overlay state.
 
 ## Runtime Hooks
 
@@ -108,7 +121,16 @@ id(rwv).request_full_frame();
 id(rwv).is_stream_paused();
 id(rwv).disable_touch(true);
 id(rwv).disable_touch(false);
+id(rwv).reconnect();
 ```
+
+The optional `controls:` block exposes the same runtime hooks as Home Assistant entities:
+
+- `pause_switch` - calls `set_stream_paused(...)`. It also sends `ClientControl PauseStream` when `stream_control_enabled: true`.
+- `touch_switch` - enables or disables touch forwarding locally. `on` means touch is enabled.
+- `request_keyframe_button` - calls `request_full_frame()`. It requires `stream_control_enabled: true`, because it is a server-side request.
+- `reconnect_button` - restarts the ESP WebSocket client connection.
+- `debug_overlay_switch` - stores local debug overlay state and publishes it as an entity. Server-side tile overlay rendering is planned for the debug overlay protocol phase; this switch is intentionally a no-op for the server until that protocol exists.
 
 ## Power Management
 
@@ -151,3 +173,11 @@ Available binary sensors:
 - `connected` - WebSocket connection state.
 - `stream_paused` - local stream pause state.
 - `touch_enabled` - inverse of `disable_touch(...)`.
+
+Available controls:
+
+- `pause_switch`
+- `touch_switch`
+- `request_keyframe_button`
+- `reconnect_button`
+- `debug_overlay_switch`

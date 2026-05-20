@@ -8,6 +8,12 @@
 #ifdef USE_BINARY_SENSOR
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #endif
+#ifdef USE_SWITCH
+#include "esphome/components/switch/switch.h"
+#endif
+#ifdef USE_BUTTON
+#include "esphome/components/button/button.h"
+#endif
 #include "JPEGDEC.h"
 #include "protocol.h"
 #include "remote_webview_config.h"
@@ -73,12 +79,25 @@ class RemoteWebView : public Component {
   void set_stream_paused_binary_sensor(binary_sensor::BinarySensor *s) { stream_paused_binary_sensor_ = s; }
   void set_touch_enabled_binary_sensor(binary_sensor::BinarySensor *s) { touch_enabled_binary_sensor_ = s; }
 #endif
+#ifdef USE_SWITCH
+  void set_pause_switch(switch_::Switch *s) { pause_switch_ = s; }
+  void set_touch_switch(switch_::Switch *s) { touch_switch_ = s; }
+  void set_debug_overlay_switch(switch_::Switch *s) { debug_overlay_switch_ = s; }
+#endif
+#ifdef USE_BUTTON
+  void set_request_keyframe_button(button::Button *b) { request_keyframe_button_ = b; }
+  void set_reconnect_button(button::Button *b) { reconnect_button_ = b; }
+#endif
 
   void disable_touch(bool disable);
+  bool is_touch_enabled() const { return !touch_disabled_; }
   bool open_url(const std::string &s);
   void set_stream_paused(bool paused);
   bool is_stream_paused() const { return stream_paused_; }
+  void set_debug_overlay_enabled(bool enabled);
+  bool is_debug_overlay_enabled() const { return debug_overlay_enabled_; }
   void request_full_frame();
+  void reconnect();
 
   uint32_t get_decode_drop_count() const { return decode_drop_count_; }
   uint32_t get_decode_avg_ms() const {
@@ -137,6 +156,7 @@ class RemoteWebView : public Component {
   uint32_t telemetry_log_interval_ms_{0};
   bool stream_paused_{false};
   bool ws_connected_{false};
+  bool debug_overlay_enabled_{false};
 
 #if REMOTE_WEBVIEW_HW_JPEG
   jpeg_decoder_handle_t hw_dec_{nullptr};
@@ -192,6 +212,15 @@ class RemoteWebView : public Component {
   binary_sensor::BinarySensor *stream_paused_binary_sensor_{nullptr};
   binary_sensor::BinarySensor *touch_enabled_binary_sensor_{nullptr};
 #endif
+#ifdef USE_SWITCH
+  switch_::Switch *pause_switch_{nullptr};
+  switch_::Switch *touch_switch_{nullptr};
+  switch_::Switch *debug_overlay_switch_{nullptr};
+#endif
+#ifdef USE_BUTTON
+  button::Button *request_keyframe_button_{nullptr};
+  button::Button *reconnect_button_{nullptr};
+#endif
 
   QueueHandle_t     q_decode_{nullptr};
   SemaphoreHandle_t ws_send_mtx_{nullptr};
@@ -230,6 +259,7 @@ class RemoteWebView : public Component {
   void publish_connection_state_();
   void publish_stream_paused_state_();
   void publish_touch_enabled_state_();
+  void publish_debug_overlay_state_();
 
   std::string resolve_device_id_() const;
   std::string build_ws_uri_() const;
@@ -249,6 +279,65 @@ class RemoteWebViewTouchListener : public touchscreen::TouchListener {
  private:
   RemoteWebView *parent_{nullptr};
 };
+
+#ifdef USE_SWITCH
+class RemoteWebViewPauseSwitch : public switch_::Switch {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+
+class RemoteWebViewTouchSwitch : public switch_::Switch {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+
+class RemoteWebViewDebugOverlaySwitch : public switch_::Switch {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void write_state(bool state) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+#endif
+
+#ifdef USE_BUTTON
+class RemoteWebViewRequestKeyframeButton : public button::Button {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+
+class RemoteWebViewReconnectButton : public button::Button {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void press_action() override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+#endif
 
 }  // namespace remote_webview
 }  // namespace esphome

@@ -90,3 +90,12 @@ Use them to correlate server logs with client behavior:
 - `frames_received`, `tiles_received`, and `fps` show whether the ESP is receiving new frame data.
 - `decode_avg_ms`, `last_decode_ms`, and `queue_depth` show whether the ESP decode side is the bottleneck.
 - `decode_drops` indicates local queue pressure or an overloaded client.
+
+## Client Controls
+
+ESPHome can also expose native Home Assistant controls with the `controls:` block. The current server protocol supports these runtime commands:
+
+- `PauseStream` - used by `pause_switch` when `stream_control_enabled: true`.
+- `RequestKeyframe` - used by `request_keyframe_button` when `stream_control_enabled: true`.
+
+The `reconnect_button` and `touch_switch` are local ESP client controls. `debug_overlay_switch` currently stores local state only; server-side overlay rendering is planned for the debug overlay protocol phase.

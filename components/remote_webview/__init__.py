@@ -1,7 +1,7 @@
 import re
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, display, sensor, touchscreen
+from esphome.components import binary_sensor, button, display, sensor, switch, touchscreen
 from esphome.components.esp32 import add_idf_component
 from esphome.components.display import validate_rotation
 from esphome.const import (
@@ -52,6 +52,12 @@ CONF_QUEUE_DEPTH = "queue_depth"
 CONF_CONNECTED = "connected"
 CONF_STREAM_PAUSED = "stream_paused"
 CONF_TOUCH_ENABLED = "touch_enabled"
+CONF_CONTROLS = "controls"
+CONF_PAUSE_SWITCH = "pause_switch"
+CONF_TOUCH_SWITCH = "touch_switch"
+CONF_REQUEST_KEYFRAME_BUTTON = "request_keyframe_button"
+CONF_RECONNECT_BUTTON = "reconnect_button"
+CONF_DEBUG_OVERLAY_SWITCH = "debug_overlay_switch"
 
 _SERVER_RE = re.compile(
     r"^(?P<host>[A-Za-z0-9](?:[A-Za-z0-9\-\.]*[A-Za-z0-9])?)\:(?P<port>\d{1,5})$"
@@ -66,6 +72,11 @@ def AUTO_LOAD(config):
         components.append("sensor")
     if CONF_BINARY_SENSORS in config:
         components.append("binary_sensor")
+    controls = config.get(CONF_CONTROLS, {})
+    if any(k in controls for k in (CONF_PAUSE_SWITCH, CONF_TOUCH_SWITCH, CONF_DEBUG_OVERLAY_SWITCH)):
+        components.append("switch")
+    if any(k in controls for k in (CONF_REQUEST_KEYFRAME_BUTTON, CONF_RECONNECT_BUTTON)):
+        components.append("button")
     return components
 
 DIAGNOSTIC_COUNT_SCHEMA = sensor.sensor_schema(
@@ -108,6 +119,17 @@ BINARY_SENSOR_SETTERS = {
     CONF_TOUCH_ENABLED: "set_touch_enabled_binary_sensor",
 }
 
+CONTROL_SWITCH_SETTERS = {
+    CONF_PAUSE_SWITCH: "set_pause_switch",
+    CONF_TOUCH_SWITCH: "set_touch_switch",
+    CONF_DEBUG_OVERLAY_SWITCH: "set_debug_overlay_switch",
+}
+
+CONTROL_BUTTON_SETTERS = {
+    CONF_REQUEST_KEYFRAME_BUTTON: "set_request_keyframe_button",
+    CONF_RECONNECT_BUTTON: "set_reconnect_button",
+}
+
 
 def validate_host_port(value):
     s = cv.string_strict(value).strip()
@@ -126,6 +148,15 @@ def validate_host_port(value):
 
 ns = cg.esphome_ns.namespace("remote_webview")
 RemoteWebView = ns.class_("RemoteWebView", cg.Component)
+RemoteWebViewPauseSwitch = ns.class_("RemoteWebViewPauseSwitch", switch.Switch)
+RemoteWebViewTouchSwitch = ns.class_("RemoteWebViewTouchSwitch", switch.Switch)
+RemoteWebViewDebugOverlaySwitch = ns.class_(
+    "RemoteWebViewDebugOverlaySwitch", switch.Switch
+)
+RemoteWebViewRequestKeyframeButton = ns.class_(
+    "RemoteWebViewRequestKeyframeButton", button.Button
+)
+RemoteWebViewReconnectButton = ns.class_("RemoteWebViewReconnectButton", button.Button)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -186,6 +217,30 @@ CONFIG_SCHEMA = cv.Schema(
                 cv.Optional(CONF_TOUCH_ENABLED): DIAGNOSTIC_BINARY_SCHEMA,
             }
         ),
+        cv.Optional(CONF_CONTROLS): cv.Schema(
+            {
+                cv.Optional(CONF_PAUSE_SWITCH): switch.switch_schema(
+                    RemoteWebViewPauseSwitch,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_TOUCH_SWITCH): switch.switch_schema(
+                    RemoteWebViewTouchSwitch,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_REQUEST_KEYFRAME_BUTTON): button.button_schema(
+                    RemoteWebViewRequestKeyframeButton,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_RECONNECT_BUTTON): button.button_schema(
+                    RemoteWebViewReconnectButton,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+                cv.Optional(CONF_DEBUG_OVERLAY_SWITCH): switch.switch_schema(
+                    RemoteWebViewDebugOverlaySwitch,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ),
+            }
+        ),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -243,5 +298,18 @@ async def to_code(config):
         if key in config.get(CONF_BINARY_SENSORS, {}):
             sens = await binary_sensor.new_binary_sensor(config[CONF_BINARY_SENSORS][key])
             cg.add(getattr(var, setter)(sens))
+
+    controls = config.get(CONF_CONTROLS, {})
+    for key, setter in CONTROL_SWITCH_SETTERS.items():
+        if key in controls:
+            ctrl = await switch.new_switch(controls[key])
+            cg.add(ctrl.set_parent(var))
+            cg.add(getattr(var, setter)(ctrl))
+
+    for key, setter in CONTROL_BUTTON_SETTERS.items():
+        if key in controls:
+            ctrl = await button.new_button(controls[key])
+            cg.add(ctrl.set_parent(var))
+            cg.add(getattr(var, setter)(ctrl))
 
     await cg.register_component(var, config)

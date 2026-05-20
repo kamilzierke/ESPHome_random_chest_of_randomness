@@ -66,6 +66,29 @@ class RemoteWebViewSchemaTest(unittest.TestCase):
 
         self.assertEqual(remote_webview.AUTO_LOAD(config), [])
 
+    def test_accepts_optional_control_entities(self):
+        remote_webview = load_remote_webview()
+
+        config = remote_webview.CONFIG_SCHEMA(
+            {
+                "id": "rwv",
+                "display_id": "panel_display",
+                "touchscreen_id": "panel_touch",
+                "server": "192.168.1.100:8081",
+                "url": "http://127.0.0.1:8123/dashboard-tablet01/0",
+                "controls": {
+                    "pause_switch": {"name": "RWV Pause Stream"},
+                    "touch_switch": {"name": "RWV Touch Enabled"},
+                    "request_keyframe_button": {"name": "RWV Request Keyframe"},
+                    "reconnect_button": {"name": "RWV Reconnect"},
+                    "debug_overlay_switch": {"name": "RWV Debug Overlay"},
+                },
+            }
+        )
+
+        self.assertIn("controls", config)
+        self.assertEqual(remote_webview.AUTO_LOAD(config), ["switch", "button"])
+
 
 if __name__ == "__main__":
     unittest.main()

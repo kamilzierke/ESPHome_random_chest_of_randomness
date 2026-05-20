@@ -51,6 +51,7 @@ void RemoteWebView::setup() {
   publish_connection_state_();
   publish_stream_paused_state_();
   publish_touch_enabled_state_();
+  publish_debug_overlay_state_();
   maybe_publish_diagnostics_();
 
 #if REMOTE_WEBVIEW_HW_JPEG
@@ -163,6 +164,15 @@ void RemoteWebView::set_stream_paused(bool paused) {
   ESP_LOGD(TAG, "stream %s", paused ? "paused" : "resumed");
 }
 
+void RemoteWebView::set_debug_overlay_enabled(bool enabled) {
+  if (debug_overlay_enabled_ == enabled)
+    return;
+
+  debug_overlay_enabled_ = enabled;
+  publish_debug_overlay_state_();
+  ESP_LOGD(TAG, "debug overlay %s", enabled ? "enabled" : "disabled");
+}
+
 void RemoteWebView::request_full_frame() {
   if (!stream_control_enabled_)
     return;
@@ -170,6 +180,16 @@ void RemoteWebView::request_full_frame() {
   if (ws_send_client_control_(proto::ClientControlCmd::RequestKeyframe, 1)) {
     ESP_LOGV(TAG, "requested keyframe");
   }
+}
+
+void RemoteWebView::reconnect() {
+  if (!ws_client_)
+    return;
+
+  ws_connected_ = false;
+  publish_connection_state_();
+  websocket_force_reconnect(ws_client_);
+  ESP_LOGD(TAG, "websocket reconnect requested");
 }
 
 void RemoteWebView::clear_decode_queue_() {
@@ -266,11 +286,23 @@ void RemoteWebView::publish_stream_paused_state_() {
 #if defined(USE_BINARY_SENSOR)
   if (stream_paused_binary_sensor_) stream_paused_binary_sensor_->publish_state(stream_paused_);
 #endif
+#if defined(USE_SWITCH)
+  if (pause_switch_) pause_switch_->publish_state(stream_paused_);
+#endif
 }
 
 void RemoteWebView::publish_touch_enabled_state_() {
 #if defined(USE_BINARY_SENSOR)
   if (touch_enabled_binary_sensor_) touch_enabled_binary_sensor_->publish_state(!touch_disabled_);
+#endif
+#if defined(USE_SWITCH)
+  if (touch_switch_) touch_switch_->publish_state(!touch_disabled_);
+#endif
+}
+
+void RemoteWebView::publish_debug_overlay_state_() {
+#if defined(USE_SWITCH)
+  if (debug_overlay_switch_) debug_overlay_switch_->publish_state(debug_overlay_enabled_);
 #endif
 }
 
@@ -786,6 +818,45 @@ void RemoteWebView::disable_touch(bool disable) {
   publish_touch_enabled_state_();
   ESP_LOGD(TAG, "touch %s", disable ? "disabled" : "enabled");
 }
+
+#ifdef USE_SWITCH
+void RemoteWebViewPauseSwitch::write_state(bool state) {
+  if (!parent_) {
+    publish_state(state);
+    return;
+  }
+  parent_->set_stream_paused(state);
+  publish_state(parent_->is_stream_paused());
+}
+
+void RemoteWebViewTouchSwitch::write_state(bool state) {
+  if (!parent_) {
+    publish_state(state);
+    return;
+  }
+  parent_->disable_touch(!state);
+  publish_state(parent_->is_touch_enabled());
+}
+
+void RemoteWebViewDebugOverlaySwitch::write_state(bool state) {
+  if (!parent_) {
+    publish_state(state);
+    return;
+  }
+  parent_->set_debug_overlay_enabled(state);
+  publish_state(parent_->is_debug_overlay_enabled());
+}
+#endif
+
+#ifdef USE_BUTTON
+void RemoteWebViewRequestKeyframeButton::press_action() {
+  if (parent_) parent_->request_full_frame();
+}
+
+void RemoteWebViewReconnectButton::press_action() {
+  if (parent_) parent_->reconnect();
+}
+#endif
 
 void RemoteWebView::set_server(const std::string &s) {
   auto pos = s.rfind(':');
