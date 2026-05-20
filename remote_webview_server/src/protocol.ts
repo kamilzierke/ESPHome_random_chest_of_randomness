@@ -17,6 +17,7 @@
 //   [type u8=5][ver u8=1]
 // ClientControl message:
 //   [type u8=6][ver u8=1][cmd u8][value u8]
+//   cmd: 1=PauseStream, 2=RequestKeyframe, 3=SetDebugOverlay
 //
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -52,6 +53,7 @@ export enum ClientControlCmd {
   Unknown         = 0,
   PauseStream     = 1,
   RequestKeyframe = 2,
+  SetDebugOverlay = 3,
 }
 
 export const FLAG_LAST_OF_FRAME = 1 << 0;
@@ -147,7 +149,11 @@ export function parseClientControlPacket(buf: Buffer): ClientControlPacket | nul
   if (buf.readUInt8(1) !== PROTOCOL_VERSION) return null;
 
   const cmd = buf.readUInt8(2) as ClientControlCmd;
-  if (cmd !== ClientControlCmd.PauseStream && cmd !== ClientControlCmd.RequestKeyframe)
+  if (
+    cmd !== ClientControlCmd.PauseStream &&
+    cmd !== ClientControlCmd.RequestKeyframe &&
+    cmd !== ClientControlCmd.SetDebugOverlay
+  )
     return null;
 
   const value = buf.readUInt8(3);

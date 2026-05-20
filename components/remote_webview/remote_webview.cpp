@@ -175,6 +175,9 @@ void RemoteWebView::set_debug_overlay_enabled(bool enabled) {
     return;
 
   debug_overlay_enabled_ = enabled;
+  if (stream_control_enabled_) {
+    ws_send_client_control_(proto::ClientControlCmd::SetDebugOverlay, enabled ? 1 : 0);
+  }
   publish_debug_overlay_state_();
   ESP_LOGD(TAG, "debug overlay %s", enabled ? "enabled" : "disabled");
 }
@@ -375,6 +378,9 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
         }
         self_->last_keepalive_us_ = esp_timer_get_time();
         self_->apply_stream_state_();
+        if (self_->stream_control_enabled_ && self_->debug_overlay_enabled_) {
+          self_->ws_send_client_control_(proto::ClientControlCmd::SetDebugOverlay, 1);
+        }
         self_->publish_connection_state_();
         self_->maybe_publish_diagnostics_();
         if (!self_->url_.empty()) {

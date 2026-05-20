@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
+  CLIENT_CONTROL_BYTES,
+  ClientControlCmd,
   Encoding,
   FLAG_IS_FULL_FRAME,
   FLAG_LAST_OF_FRAME,
@@ -15,6 +17,7 @@ import {
   buildFrameStatsPacket,
   buildTouchPacket,
   iterateTiles,
+  parseClientControlPacket,
   parseFrameHeader,
   parseTouchPacket,
 } from "./protocol.js";
@@ -84,5 +87,20 @@ describe("remote webview protocol", () => {
     expect(packet.readUInt8(1)).toBe(PROTOCOL_VERSION);
     expect(packet.readUInt32LE(2)).toBe(0);
     expect(packet.readUInt32LE(6)).toBe(0);
+  });
+
+  test("ClientControl accepts SetDebugOverlay without changing the 4-byte wire size", () => {
+    const packet = Buffer.from([
+      MsgType.ClientControl,
+      PROTOCOL_VERSION,
+      ClientControlCmd.SetDebugOverlay,
+      1,
+    ]);
+
+    expect(packet).toHaveLength(CLIENT_CONTROL_BYTES);
+    expect(parseClientControlPacket(packet)).toEqual({
+      cmd: ClientControlCmd.SetDebugOverlay,
+      value: 1,
+    });
   });
 });

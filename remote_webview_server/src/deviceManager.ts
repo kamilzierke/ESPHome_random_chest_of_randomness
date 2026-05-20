@@ -19,6 +19,7 @@ export type DeviceSession = {
   processor: FrameProcessor;
   selfTestRunner: SelfTestRunner;
   streamPaused: boolean;
+  debugOverlayEnabled: boolean;
 
   // trailing throttle state
   pendingB64?: string;
@@ -54,6 +55,18 @@ export function requestDeviceKeyframe(dev: DeviceSession): void {
   dev.processor.requestFullFrame();
   broadcaster.clearQueue(dev.deviceId);
   console.log(`[device] ${dev.deviceId} keyframe requested`);
+}
+
+export function setDeviceDebugOverlay(dev: DeviceSession, enabled: boolean): void {
+  if (dev.debugOverlayEnabled === enabled)
+    return;
+
+  dev.debugOverlayEnabled = enabled;
+  dev.lastActive = Date.now();
+  dev.pendingB64 = undefined;
+  dev.processor.requestFullFrame();
+  broadcaster.clearQueue(dev.deviceId);
+  console.log(`[device] ${dev.deviceId} debug overlay ${enabled ? "enabled" : "disabled"}`);
 }
 
 export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<DeviceSession> {
@@ -126,6 +139,7 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
     processor,
     selfTestRunner: new SelfTestRunner(broadcaster),
     streamPaused: false,
+    debugOverlayEnabled: false,
     pendingB64: undefined,
     throttleTimer: undefined,
     lastProcessedMs: undefined,

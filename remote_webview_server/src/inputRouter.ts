@@ -1,5 +1,5 @@
 import type { DeviceSession } from "./deviceManager.js";
-import { requestDeviceKeyframe, setDeviceStreamPaused } from "./deviceManager.js";
+import { requestDeviceKeyframe, setDeviceDebugOverlay, setDeviceStreamPaused } from "./deviceManager.js";
 import {
   ClientControlCmd,
   TouchKind,
@@ -78,6 +78,9 @@ export class InputRouter {
         break;
       case ClientControlCmd.RequestKeyframe:
         requestDeviceKeyframe(dev);
+        break;
+      case ClientControlCmd.SetDebugOverlay:
+        setDeviceDebugOverlay(dev, pkt.value !== 0);
         break;
       default:
         break;

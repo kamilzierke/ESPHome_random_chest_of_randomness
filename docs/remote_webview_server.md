@@ -97,5 +97,6 @@ ESPHome can also expose native Home Assistant controls with the `controls:` bloc
 
 - `PauseStream` - used by `pause_switch` when `stream_control_enabled: true`.
 - `RequestKeyframe` - used by `request_keyframe_button` when `stream_control_enabled: true`.
+- `SetDebugOverlay` - used by `debug_overlay_switch` when `stream_control_enabled: true`. The server stores the state and requests a keyframe; tile border/heatmap drawing is implemented in the server overlay renderer phase.
 
-The `reconnect_button` and `touch_switch` are local ESP client controls. `debug_overlay_switch` currently stores local state only; server-side overlay rendering is planned for the debug overlay protocol phase.
+The `reconnect_button` and `touch_switch` are local ESP client controls.

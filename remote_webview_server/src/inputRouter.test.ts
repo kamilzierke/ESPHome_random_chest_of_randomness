@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InputRouter } from "./inputRouter.js";
 import {
+  ClientControlCmd,
   MsgType,
   OPENURL_HEADER_BYTES,
   PROTOCOL_VERSION,
@@ -33,7 +34,17 @@ function makeDevice(send = vi.fn()) {
     url: "",
     lastActive: 0,
     pendingB64: undefined,
+    debugOverlayEnabled: false,
   } as any;
+}
+
+function buildClientControlPacket(cmd: ClientControlCmd, value: number): Buffer {
+  return Buffer.from([
+    MsgType.ClientControl,
+    PROTOCOL_VERSION,
+    cmd,
+    value & 0xff,
+  ]);
 }
 
 describe("InputRouter", () => {
@@ -86,5 +97,20 @@ describe("InputRouter", () => {
       expect.stringContaining("http://does-not-resolve.local/")
     );
     expect(dev.processor.requestFullFrame).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies debug overlay ClientControl state to the device session", () => {
+    const dev = makeDevice();
+    const router = new InputRouter(0);
+
+    router.handleClientControlPacket(dev, buildClientControlPacket(ClientControlCmd.SetDebugOverlay, 1));
+
+    expect(dev.debugOverlayEnabled).toBe(true);
+    expect(dev.processor.requestFullFrame).toHaveBeenCalledTimes(1);
+
+    router.handleClientControlPacket(dev, buildClientControlPacket(ClientControlCmd.SetDebugOverlay, 0));
+
+    expect(dev.debugOverlayEnabled).toBe(false);
+    expect(dev.processor.requestFullFrame).toHaveBeenCalledTimes(2);
   });
 });
