@@ -15,6 +15,10 @@ export type FrameOut = {
   encoding: Encoding;
 };
 
+export type FrameProcessOptions = {
+  debugOverlayEnabled?: boolean;
+};
+
 export type FrameProcessorCfg = {
   tileSize: number;
   fullframeTileCount: number;
@@ -41,7 +45,7 @@ export class FrameProcessor {
     this._fullFrameRequested = true;
   }
 
-  public async processFrameAsync(rgba: RGBA): Promise<FrameOut> {
+  public async processFrameAsync(rgba: RGBA, options: FrameProcessOptions = {}): Promise<FrameOut> {
     if (!this._prev) this._initGrid(rgba.width, rgba.height);
 
     let forceFull = (this._iter % this._cfg.fullFrameEvery) === 0;
@@ -79,9 +83,9 @@ export class FrameProcessor {
 
     let out: FrameOut;
     if (doFull) {
-      out = await this._processFullFrame(rgba, tiles, chosenEncoding);
+      out = await this._processFullFrame(rgba, tiles, chosenEncoding, options.debugOverlayEnabled === true);
     } else {
-      out = await this._processPartialFrame(rgba, tiles, chosenEncoding);
+      out = await this._processPartialFrame(rgba, tiles, chosenEncoding, options.debugOverlayEnabled === true);
     }
 
     const maxBytesPerTile = this._cfg.maxBytesPerMessage - FRAME_HEADER_BYTES - TILE_HEADER_BYTES;
@@ -100,13 +104,15 @@ export class FrameProcessor {
   private async _processFullFrame(
     rgba: RGBA,
     tilesInfo: { idx: number; h32: number }[],
-    encoding: Encoding
+    encoding: Encoding,
+    debugOverlayEnabled: boolean
   ): Promise<FrameOut> {
     const rectsForFull = this._splitWholeFrame(rgba.width, rgba.height, this._cfg.fullframeTileCount);
     const rects: Rect[] = [];
 
     for (const r of rectsForFull) {
       const raw = this._extractRaw(rgba, r.x, r.y, r.w, r.h);
+      if (debugOverlayEnabled) drawTileDebugBorder(raw, r.w, r.h, true);
       const data = await this._encode(raw, r.w, r.h, encoding);
       rects.push({ x: r.x, y: r.y, w: r.w, h: r.h, data });
     }
@@ -119,13 +125,15 @@ export class FrameProcessor {
   private async _processPartialFrame(
     rgba: RGBA,
     tiles: { x: number; y: number; w: number; h: number; idx: number; h32: number; changed: boolean }[],
-    encoding: Encoding
+    encoding: Encoding,
+    debugOverlayEnabled: boolean
   ): Promise<FrameOut> {
     const mergedRects = this._mergeChangedTiles(tiles, rgba.width, rgba.height);
 
     const out: Rect[] = [];
     for (const r of mergedRects) {
       const raw = this._extractRaw(rgba, r.x, r.y, r.w, r.h);
+      if (debugOverlayEnabled) drawTileDebugBorder(raw, r.w, r.h, false);
       const data = await this._encode(raw, r.w, r.h, encoding);
       out.push({ ...r, data });
     }
@@ -323,5 +331,31 @@ export class FrameProcessor {
     const RGBA_RED = 0xFF0000FF; // bytes: FF 00 00 FF
     for (let o = 0; o < raw.length; o += 4) view.setUint32(o, RGBA_RED, true);
     return this._encode(raw, w, h, enc);
+  }
+}
+
+export function drawTileDebugBorder(rawRgba: Buffer, w: number, h: number, isFullFrame: boolean): void {
+  if (w <= 0 || h <= 0 || rawRgba.length < w * h * 4)
+    return;
+
+  const color = isFullFrame
+    ? [0, 160, 255, 255]
+    : [255, 180, 0, 255];
+
+  const setPixel = (x: number, y: number) => {
+    const off = (y * w + x) * 4;
+    rawRgba[off] = color[0];
+    rawRgba[off + 1] = color[1];
+    rawRgba[off + 2] = color[2];
+    rawRgba[off + 3] = color[3];
+  };
+
+  for (let x = 0; x < w; x++) {
+    setPixel(x, 0);
+    setPixel(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    setPixel(0, y);
+    setPixel(w - 1, y);
   }
 }

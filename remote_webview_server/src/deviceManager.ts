@@ -176,7 +176,10 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
-      const out = await processor.processFrameAsync({ data, width: info.width, height: info.height });
+      const out = await processor.processFrameAsync(
+        { data, width: info.width, height: info.height },
+        { debugOverlayEnabled: dev.debugOverlayEnabled }
+      );
       if (out.rects.length > 0) {
         dev.frameId = (dev.frameId + 1) >>> 0;
         broadcaster.sendFrameChunked(id, out, dev.frameId, cfg.maxBytesPerMessage);

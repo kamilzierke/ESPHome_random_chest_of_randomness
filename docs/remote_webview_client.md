@@ -131,7 +131,7 @@ The optional `controls:` block exposes the same runtime hooks as Home Assistant 
 - `touch_switch` - enables or disables touch forwarding locally. `on` means touch is enabled.
 - `request_keyframe_button` - calls `request_full_frame()`. It requires `stream_control_enabled: true`, because it is a server-side request.
 - `reconnect_button` - restarts the ESP WebSocket client connection.
-- `debug_overlay_switch` - stores local debug overlay state, publishes it as an entity, and sends `ClientControl SetDebugOverlay` when `stream_control_enabled: true`. The server stores this state and requests a keyframe; actual tile border/heatmap rendering is implemented in the server overlay phase.
+- `debug_overlay_switch` - stores local debug overlay state, publishes it as an entity, and sends `ClientControl SetDebugOverlay` when `stream_control_enabled: true`. The server stores this state, requests a keyframe, and draws diagnostic borders on transmitted rects. Full-frame rects are blue; partial rects are amber. Heatmaps and touch markers are later diagnostics stages.
 
 ## Power Management
 
@@ -274,4 +274,4 @@ Available controls:
 - `reconnect_button`
 - `debug_overlay_switch`
 
-`debug_overlay_switch` currently synchronizes debug overlay state to the server. It does not yet draw server-side tile borders, changed-tile colors or latency heatmaps; those require the server overlay renderer work.
+`debug_overlay_switch` synchronizes debug overlay state to the server. The current server overlay draws rect borders before encoding; changed-tile colors, latency heatmaps and touch markers are planned for later diagnostics stages.
