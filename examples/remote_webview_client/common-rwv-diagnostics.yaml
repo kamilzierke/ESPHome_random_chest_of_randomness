@@ -4,9 +4,10 @@
 # same `remote_webview:` component; do not duplicate `remote_webview:` in the
 # device YAML.
 #
-# Note: `debug_overlay_switch` is exposed as a future server-overlay control,
-# but tile borders/change heatmaps still require the server debug overlay
-# protocol work. It does not draw tile borders by itself today.
+# Note: `debug_overlay_switch` now sends debug overlay state to the server.
+# The current server overlay draws tile/rect borders: blue for full-frame
+# rects and amber for partial updates. Heatmaps and touch markers are planned
+# as separate diagnostics work.
 
 remote_webview:
   sensors:

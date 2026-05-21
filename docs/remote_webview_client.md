@@ -87,6 +87,16 @@ ws://server:8081/?id=...&w=480&h=480&r=0&ts=48&fftc=4&ffat=0.9&ffe=150&enf=1&mfi
 
 The server logs the effective values on connect. The ESPHome values take priority over add-on defaults for that device.
 
+## Render Format Status
+
+| Format | Status | Notes |
+| --- | --- | --- |
+| JPEG | Implemented | Current production path. The server encodes all frame rects as JPEG and the ESPHome client decodes them with `JPEGDEC`. |
+| PNG | Planned | Protocol enum exists, but the server does not yet choose PNG and the ESPHome client does not yet decode it. |
+| RAW565 | Planned | Server has a low-level RAW565 encoder helper, but render-mode selection and the ESPHome draw fast path are not wired yet. |
+| RAW565_RLE | Planned | Protocol enum exists; encoder/decoder and runtime selection are still pending. |
+| RAW565_LZ4 | Reserved | Protocol enum exists as an experimental future option. It needs RAM and dependency review before implementation. |
+
 ## Parameters
 
 - `id` - ESPHome component id used by lambdas.
