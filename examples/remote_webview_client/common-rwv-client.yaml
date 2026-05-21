@@ -21,6 +21,7 @@ substitutions:
   rwv_every_nth_frame: "1"
   rwv_min_frame_interval: "80"
   rwv_jpeg_quality: "70"
+  rwv_render_mode: "jpeg"
   rwv_max_bytes_per_msg: "61440"
   rwv_touch_wake_passthrough: "false"
   rwv_telemetry_log_interval_ms: "15000"
@@ -39,6 +40,7 @@ remote_webview:
   every_nth_frame: ${rwv_every_nth_frame}
   min_frame_interval: ${rwv_min_frame_interval}
   jpeg_quality: ${rwv_jpeg_quality}
+  render_mode: ${rwv_render_mode}
   max_bytes_per_msg: ${rwv_max_bytes_per_msg}
   latest_frame_wins: true
   stream_control_enabled: true

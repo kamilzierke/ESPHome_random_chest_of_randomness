@@ -1,8 +1,11 @@
 import type { DeviceSession } from "./deviceManager.js";
-import { requestDeviceKeyframe, setDeviceDebugOverlay, setDeviceStreamPaused } from "./deviceManager.js";
+import { requestDeviceKeyframe, setDeviceDebugOverlay, setDeviceStreamPaused, updateDeviceRuntimeConfig } from "./deviceManager.js";
+import { renderModeFromWire } from "./config.js";
 import {
+  ClientConfigField,
   ClientControlCmd,
   TouchKind,
+  parseClientConfigPacket,
   parseClientControlPacket,
   parseFrameStatsPacket,
   parseOpenURLPacket,
@@ -81,6 +84,30 @@ export class InputRouter {
         break;
       case ClientControlCmd.SetDebugOverlay:
         setDeviceDebugOverlay(dev, pkt.value !== 0);
+        break;
+      default:
+        break;
+    }
+  }
+
+  public handleClientConfigPacket(dev: DeviceSession, buf: Buffer): void {
+    const pkt = parseClientConfigPacket(buf);
+    if (!pkt) return;
+
+    switch (pkt.field) {
+      case ClientConfigField.RenderMode: {
+        const renderMode = renderModeFromWire(pkt.value);
+        if (renderMode) updateDeviceRuntimeConfig(dev, { renderMode });
+        break;
+      }
+      case ClientConfigField.JpegQuality:
+        updateDeviceRuntimeConfig(dev, { jpegQuality: pkt.value });
+        break;
+      case ClientConfigField.MinFrameInterval:
+        updateDeviceRuntimeConfig(dev, { minFrameInterval: pkt.value });
+        break;
+      case ClientConfigField.TileSize:
+        updateDeviceRuntimeConfig(dev, { tileSize: pkt.value });
         break;
       default:
         break;

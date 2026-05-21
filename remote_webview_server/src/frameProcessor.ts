@@ -26,6 +26,7 @@ export type FrameProcessorCfg = {
   jpegQuality: number;
   fullFrameEvery: number;
   maxBytesPerMessage: number;
+  renderMode?: string;
 };
 
 export class FrameProcessor {
@@ -331,6 +332,17 @@ export class FrameProcessor {
     const RGBA_RED = 0xFF0000FF; // bytes: FF 00 00 FF
     for (let o = 0; o < raw.length; o += 4) view.setUint32(o, RGBA_RED, true);
     return this._encode(raw, w, h, enc);
+  }
+
+  public updateConfig(cfg: FrameProcessorCfg): void {
+    const tileSizeChanged = cfg.tileSize !== this._cfg.tileSize;
+    this._cfg = cfg;
+    if (tileSizeChanged) {
+      this._cols = 0;
+      this._rows = 0;
+      this._prev = undefined;
+    }
+    this.requestFullFrame();
   }
 }
 

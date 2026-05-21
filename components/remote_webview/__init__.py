@@ -1,14 +1,18 @@
 import re
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, button, display, sensor, switch, touchscreen
+from esphome.components import binary_sensor, button, display, number, select, sensor, switch, touchscreen
 from esphome.components.esp32 import add_idf_component
 from esphome.components.display import validate_rotation
 from esphome.const import (
     CONF_ID,
     CONF_DISPLAY_ID,
+    CONF_MAX_VALUE,
+    CONF_MIN_VALUE,
+    CONF_OPTIONS,
     CONF_URL,
     CONF_ROTATION,
+    CONF_STEP,
     DEVICE_CLASS_CONNECTIVITY,
     DEVICE_CLASS_DURATION,
     ENTITY_CATEGORY_DIAGNOSTIC,
@@ -58,6 +62,14 @@ CONF_TOUCH_SWITCH = "touch_switch"
 CONF_REQUEST_KEYFRAME_BUTTON = "request_keyframe_button"
 CONF_RECONNECT_BUTTON = "reconnect_button"
 CONF_DEBUG_OVERLAY_SWITCH = "debug_overlay_switch"
+CONF_RENDER_MODE = "render_mode"
+CONF_RENDER_MODE_SELECT = "render_mode_select"
+CONF_JPEG_QUALITY_NUMBER = "jpeg_quality_number"
+CONF_MIN_FRAME_INTERVAL_NUMBER = "min_frame_interval_number"
+CONF_TILE_SIZE_NUMBER = "tile_size_number"
+
+RENDER_MODE_OPTIONS = ["auto", "jpeg", "png", "raw565", "raw565_rle"]
+RENDER_MODE_TO_WIRE = {name: i for i, name in enumerate(RENDER_MODE_OPTIONS)}
 
 _SERVER_RE = re.compile(
     r"^(?P<host>[A-Za-z0-9](?:[A-Za-z0-9\-\.]*[A-Za-z0-9])?)\:(?P<port>\d{1,5})$"
@@ -77,6 +89,10 @@ def AUTO_LOAD(config):
         components.append("switch")
     if any(k in controls for k in (CONF_REQUEST_KEYFRAME_BUTTON, CONF_RECONNECT_BUTTON)):
         components.append("button")
+    if any(k in controls for k in (CONF_JPEG_QUALITY_NUMBER, CONF_MIN_FRAME_INTERVAL_NUMBER, CONF_TILE_SIZE_NUMBER)):
+        components.append("number")
+    if CONF_RENDER_MODE_SELECT in controls:
+        components.append("select")
     return components
 
 DIAGNOSTIC_COUNT_SCHEMA = sensor.sensor_schema(
@@ -157,6 +173,48 @@ RemoteWebViewRequestKeyframeButton = ns.class_(
     "RemoteWebViewRequestKeyframeButton", button.Button
 )
 RemoteWebViewReconnectButton = ns.class_("RemoteWebViewReconnectButton", button.Button)
+RemoteWebViewJpegQualityNumber = ns.class_(
+    "RemoteWebViewJpegQualityNumber", number.Number
+)
+RemoteWebViewMinFrameIntervalNumber = ns.class_(
+    "RemoteWebViewMinFrameIntervalNumber", number.Number
+)
+RemoteWebViewTileSizeNumber = ns.class_(
+    "RemoteWebViewTileSizeNumber", number.Number
+)
+RemoteWebViewRenderModeSelect = ns.class_(
+    "RemoteWebViewRenderModeSelect", select.Select
+)
+
+
+def render_mode(value):
+    value = cv.string_strict(value).lower()
+    if value not in RENDER_MODE_TO_WIRE:
+        raise cv.Invalid(f"render_mode must be one of: {', '.join(RENDER_MODE_OPTIONS)}")
+    return value
+
+
+def render_mode_options(value):
+    options = cv.ensure_list(render_mode)(value)
+    if options != RENDER_MODE_OPTIONS:
+        raise cv.Invalid(
+            "render_mode_select options must stay in protocol order: "
+            + ", ".join(RENDER_MODE_OPTIONS)
+        )
+    return options
+
+
+def runtime_number_schema(class_, *, min_value, max_value, step):
+    return number.number_schema(
+        class_,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    ).extend(
+        {
+            cv.Optional(CONF_MIN_VALUE, default=min_value): cv.float_,
+            cv.Optional(CONF_MAX_VALUE, default=max_value): cv.float_,
+            cv.Optional(CONF_STEP, default=step): cv.float_,
+        }
+    )
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -173,6 +231,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_EVERY_NTH_FRAME): cv.int_,
         cv.Optional(CONF_MIN_FRAME_INTERVAL): cv.int_,
         cv.Optional(CONF_JPEG_QUALITY): cv.int_,
+        cv.Optional(CONF_RENDER_MODE, default="jpeg"): render_mode,
         cv.Optional(CONF_MAX_BYTES_PER_MSG): cv.int_,
         cv.Optional(CONF_BIG_ENDIAN): cv.boolean,
         cv.Optional(CONF_ROTATION): validate_rotation,
@@ -239,6 +298,32 @@ CONFIG_SCHEMA = cv.Schema(
                     RemoteWebViewDebugOverlaySwitch,
                     entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ),
+                cv.Optional(CONF_RENDER_MODE_SELECT): select.select_schema(
+                    RemoteWebViewRenderModeSelect,
+                    entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                ).extend(
+                    {
+                        cv.Optional(CONF_OPTIONS, default=RENDER_MODE_OPTIONS): render_mode_options,
+                    }
+                ),
+                cv.Optional(CONF_JPEG_QUALITY_NUMBER): runtime_number_schema(
+                    RemoteWebViewJpegQualityNumber,
+                    min_value=20,
+                    max_value=95,
+                    step=5,
+                ),
+                cv.Optional(CONF_MIN_FRAME_INTERVAL_NUMBER): runtime_number_schema(
+                    RemoteWebViewMinFrameIntervalNumber,
+                    min_value=0,
+                    max_value=1000,
+                    step=10,
+                ),
+                cv.Optional(CONF_TILE_SIZE_NUMBER): runtime_number_schema(
+                    RemoteWebViewTileSizeNumber,
+                    min_value=16,
+                    max_value=256,
+                    step=16,
+                ),
             }
         ),
     }
@@ -277,6 +362,7 @@ async def to_code(config):
         cg.add(var.set_min_frame_interval(config[CONF_MIN_FRAME_INTERVAL]))
     if CONF_JPEG_QUALITY in config:
         cg.add(var.set_jpeg_quality(config[CONF_JPEG_QUALITY]))
+    cg.add(var.set_render_mode(RENDER_MODE_TO_WIRE[config[CONF_RENDER_MODE]]))
     if CONF_MAX_BYTES_PER_MSG in config:
         cg.add(var.set_max_bytes_per_msg(config[CONF_MAX_BYTES_PER_MSG]))
     if CONF_BIG_ENDIAN in config:
@@ -309,6 +395,40 @@ async def to_code(config):
     for key, setter in CONTROL_BUTTON_SETTERS.items():
         if key in controls:
             ctrl = await button.new_button(controls[key])
+            cg.add(ctrl.set_parent(var))
+            cg.add(getattr(var, setter)(ctrl))
+
+    if CONF_RENDER_MODE_SELECT in controls:
+        ctrl = await select.new_select(
+            controls[CONF_RENDER_MODE_SELECT],
+            options=controls[CONF_RENDER_MODE_SELECT][CONF_OPTIONS],
+        )
+        cg.add(ctrl.set_parent(var))
+        cg.add(var.set_render_mode_select(ctrl))
+
+    number_controls = {
+        CONF_JPEG_QUALITY_NUMBER: (
+            "set_jpeg_quality_number",
+            RemoteWebViewJpegQualityNumber,
+        ),
+        CONF_MIN_FRAME_INTERVAL_NUMBER: (
+            "set_min_frame_interval_number",
+            RemoteWebViewMinFrameIntervalNumber,
+        ),
+        CONF_TILE_SIZE_NUMBER: (
+            "set_tile_size_number",
+            RemoteWebViewTileSizeNumber,
+        ),
+    }
+    for key, (setter, _class) in number_controls.items():
+        if key in controls:
+            conf = controls[key]
+            ctrl = await number.new_number(
+                conf,
+                min_value=conf[CONF_MIN_VALUE],
+                max_value=conf[CONF_MAX_VALUE],
+                step=conf[CONF_STEP],
+            )
             cg.add(ctrl.set_parent(var))
             cg.add(getattr(var, setter)(ctrl))
 

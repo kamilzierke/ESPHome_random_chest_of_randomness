@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InputRouter } from "./inputRouter.js";
 import {
   ClientControlCmd,
+  ClientConfigField,
   MsgType,
   OPENURL_HEADER_BYTES,
   PROTOCOL_VERSION,
   TouchKind,
+  buildClientConfigPacket,
   buildTouchPacket,
 } from "./protocol.js";
 
@@ -26,10 +28,19 @@ function makeDevice(send = vi.fn()) {
     cfg: {
       width: 480,
       height: 480,
+      tileSize: 48,
+      fullFrameTileCount: 4,
+      fullFrameAreaThreshold: 0.9,
+      fullFrameEvery: 150,
+      everyNthFrame: 1,
+      minFrameInterval: 80,
+      jpegQuality: 70,
+      maxBytesPerMessage: 61440,
       rotation: 0,
+      renderMode: "jpeg",
     },
     cdp: { send },
-    processor: { requestFullFrame: vi.fn() },
+    processor: { requestFullFrame: vi.fn(), updateConfig: vi.fn() },
     selfTestRunner: { stop: vi.fn(), startAsync: vi.fn() },
     url: "",
     lastActive: 0,
@@ -112,5 +123,22 @@ describe("InputRouter", () => {
 
     expect(dev.debugOverlayEnabled).toBe(false);
     expect(dev.processor.requestFullFrame).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies ClientConfig runtime tuning without replacing the device session", () => {
+    const dev = makeDevice();
+    const router = new InputRouter(0);
+
+    router.handleClientConfigPacket(dev, buildClientConfigPacket(ClientConfigField.JpegQuality, 82));
+    router.handleClientConfigPacket(dev, buildClientConfigPacket(ClientConfigField.TileSize, 64));
+    router.handleClientConfigPacket(dev, buildClientConfigPacket(ClientConfigField.MinFrameInterval, 50));
+    router.handleClientConfigPacket(dev, buildClientConfigPacket(ClientConfigField.RenderMode, 1));
+
+    expect(dev.cfg.jpegQuality).toBe(82);
+    expect(dev.cfg.tileSize).toBe(64);
+    expect(dev.cfg.minFrameInterval).toBe(50);
+    expect(dev.cfg.renderMode).toBe("jpeg");
+    expect(dev.processor.updateConfig).toHaveBeenCalled();
+    expect(dev.processor.requestFullFrame).toHaveBeenCalled();
   });
 });

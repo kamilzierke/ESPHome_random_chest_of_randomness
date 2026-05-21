@@ -26,6 +26,7 @@ remote_webview:
   every_nth_frame: 1
   min_frame_interval: 80
   jpeg_quality: 70
+  render_mode: jpeg
   max_bytes_per_msg: 61440
   latest_frame_wins: true
   stream_control_enabled: true
@@ -75,6 +76,24 @@ remote_webview:
       name: "RWV Reconnect"
     debug_overlay_switch:
       name: "RWV Debug Overlay"
+    render_mode_select:
+      name: "RWV Render Mode"
+      options: [auto, jpeg, png, raw565, raw565_rle]
+    jpeg_quality_number:
+      name: "RWV JPEG Quality"
+      min_value: 20
+      max_value: 95
+      step: 5
+    min_frame_interval_number:
+      name: "RWV Min Frame Interval"
+      min_value: 0
+      max_value: 1000
+      step: 10
+    tile_size_number:
+      name: "RWV Tile Size"
+      min_value: 16
+      max_value: 256
+      step: 16
 ```
 
 ## Client and Server Parameter Contract
@@ -82,7 +101,7 @@ remote_webview:
 Most render parameters are configured in ESPHome but are consumed by the server. The client sends them in the WebSocket URL:
 
 ```text
-ws://server:8081/?id=...&w=480&h=480&r=0&ts=48&fftc=4&ffat=0.9&ffe=150&enf=1&mfi=80&q=70&mbpm=61440
+ws://server:8081/?id=...&w=480&h=480&r=0&ts=48&fftc=4&ffat=0.9&ffe=150&enf=1&mfi=80&q=70&rm=jpeg&mbpm=61440
 ```
 
 The server logs the effective values on connect. The ESPHome values take priority over add-on defaults for that device.
@@ -112,6 +131,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `every_nth_frame` - server-side Chromium screencast sampling.
 - `min_frame_interval` - server-side minimum frame processing interval in milliseconds.
 - `jpeg_quality` - server-side JPEG quality.
+- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the only fully implemented image path today; other modes are accepted for runtime plumbing and future format work.
 - `max_bytes_per_msg` - both client receive limit and server-side packet chunking hint.
 - `big_endian` - local RGB565 byte order for drawing decoded pixels.
 - `rotation` - sent to the server as `r`; affects rendered image rotation and touch mapping.
@@ -121,7 +141,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `telemetry_log_interval_ms` - local telemetry log interval.
 - `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior.
 - `binary_sensors` - optional ESPHome native state entities for connection, stream pause and touch enable state.
-- `controls` - optional ESPHome native controls for pause, touch enable, keyframe request, reconnect and local debug overlay state.
+- `controls` - optional ESPHome native controls for pause, touch enable, keyframe request, reconnect, debug overlay and runtime tuning.
 
 ## Runtime Hooks
 
@@ -142,6 +162,10 @@ The optional `controls:` block exposes the same runtime hooks as Home Assistant 
 - `request_keyframe_button` - calls `request_full_frame()`. It requires `stream_control_enabled: true`, because it is a server-side request.
 - `reconnect_button` - restarts the ESP WebSocket client connection.
 - `debug_overlay_switch` - stores local debug overlay state, publishes it as an entity, and sends `ClientControl SetDebugOverlay` when `stream_control_enabled: true`. The server stores this state, requests a keyframe, and draws diagnostic borders on transmitted rects. Full-frame rects are blue; partial rects are amber. Heatmaps and touch markers are later diagnostics stages.
+- `render_mode_select` - sends `ClientConfig RenderMode` when `stream_control_enabled: true`. The server updates the device session without reconnect and requests a keyframe. Only `jpeg` renders as a non-experimental path today.
+- `jpeg_quality_number` - sends `ClientConfig JpegQuality` and affects subsequent JPEG frames without reconnect.
+- `min_frame_interval_number` - sends `ClientConfig MinFrameInterval` and updates the server-side frame throttle without reconnect.
+- `tile_size_number` - sends `ClientConfig TileSize`, rebuilds the server tile grid and requests a keyframe without reconnect.
 
 ## Power Management
 
@@ -283,5 +307,11 @@ Available controls:
 - `request_keyframe_button`
 - `reconnect_button`
 - `debug_overlay_switch`
+- `render_mode_select`
+- `jpeg_quality_number`
+- `min_frame_interval_number`
+- `tile_size_number`
 
 `debug_overlay_switch` synchronizes debug overlay state to the server. The current server overlay draws rect borders before encoding; changed-tile colors, latency heatmaps and touch markers are planned for later diagnostics stages.
+
+The runtime tuning controls use `ClientConfig` packets. They update the active server-side device session without reconnecting. Changing `tile_size` or `render_mode` forces a keyframe because it changes how rects are generated or interpreted; changing JPEG quality or minimum frame interval applies to subsequent frames.

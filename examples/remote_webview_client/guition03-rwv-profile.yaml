@@ -15,6 +15,7 @@ substitutions:
   rwv_every_nth_frame: "1"
   rwv_max_bytes_per_msg: "61440"
   rwv_jpeg_quality: "82"
+  rwv_render_mode: "jpeg"
   rwv_min_frame_interval: "70"
   rwv_idle_dim_after: "30s"
   rwv_idle_sleep_after: "60s"

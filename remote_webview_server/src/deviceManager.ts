@@ -69,6 +69,64 @@ export function setDeviceDebugOverlay(dev: DeviceSession, enabled: boolean): voi
   console.log(`[device] ${dev.deviceId} debug overlay ${enabled ? "enabled" : "disabled"}`);
 }
 
+export type RuntimeConfigPatch = Partial<Pick<DeviceConfig, "renderMode" | "jpegQuality" | "minFrameInterval" | "tileSize">>;
+
+export function updateDeviceRuntimeConfig(dev: DeviceSession, patch: RuntimeConfigPatch): void {
+  const nextCfg: DeviceConfig = { ...dev.cfg };
+  let changed = false;
+  let forceFullFrame = false;
+
+  if (patch.renderMode != null && patch.renderMode !== nextCfg.renderMode) {
+    nextCfg.renderMode = patch.renderMode;
+    changed = true;
+    forceFullFrame = true;
+  }
+  if (patch.jpegQuality != null) {
+    const v = Math.min(100, Math.max(1, Math.round(patch.jpegQuality)));
+    if (v !== nextCfg.jpegQuality) {
+      nextCfg.jpegQuality = v;
+      changed = true;
+    }
+  }
+  if (patch.minFrameInterval != null) {
+    const v = Math.max(0, Math.round(patch.minFrameInterval));
+    if (v !== nextCfg.minFrameInterval) {
+      nextCfg.minFrameInterval = v;
+      changed = true;
+    }
+  }
+  if (patch.tileSize != null) {
+    const v = Math.max(1, Math.round(patch.tileSize));
+    if (v !== nextCfg.tileSize) {
+      nextCfg.tileSize = v;
+      changed = true;
+      forceFullFrame = true;
+    }
+  }
+
+  if (!changed)
+    return;
+
+  dev.cfg = nextCfg;
+  dev.lastActive = Date.now();
+  dev.pendingB64 = undefined;
+  dev.processor.updateConfig({
+    tileSize: nextCfg.tileSize,
+    fullframeTileCount: nextCfg.fullFrameTileCount,
+    fullframeAreaThreshold: nextCfg.fullFrameAreaThreshold,
+    jpegQuality: nextCfg.jpegQuality,
+    fullFrameEvery: nextCfg.fullFrameEvery,
+    maxBytesPerMessage: nextCfg.maxBytesPerMessage,
+    renderMode: nextCfg.renderMode,
+  });
+  if (forceFullFrame) {
+    broadcaster.clearQueue(dev.deviceId);
+    dev.processor.requestFullFrame();
+  }
+
+  console.log(`[device] ${dev.deviceId} runtime config updated: renderMode=${nextCfg.renderMode} tileSize=${nextCfg.tileSize} jpegQuality=${nextCfg.jpegQuality} minFrameInterval=${nextCfg.minFrameInterval}`);
+}
+
 export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<DeviceSession> {
   const root = getRoot();
   if (!root) throw new Error("CDP not ready");
@@ -125,6 +183,7 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
     jpegQuality: cfg.jpegQuality,
     fullFrameEvery: cfg.fullFrameEvery,
     maxBytesPerMessage: cfg.maxBytesPerMessage,
+    renderMode: cfg.renderMode,
   });
 
   const newDevice: DeviceSession = {
@@ -182,7 +241,7 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
       );
       if (out.rects.length > 0) {
         dev.frameId = (dev.frameId + 1) >>> 0;
-        broadcaster.sendFrameChunked(id, out, dev.frameId, cfg.maxBytesPerMessage);
+        broadcaster.sendFrameChunked(id, out, dev.frameId, dev.cfg.maxBytesPerMessage);
       }
     } catch (e) {
       console.warn(`[device] Failed to process frame for ${id}: ${(e as Error).message}`);
@@ -206,7 +265,7 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
     const now = Date.now();
     const since = newDevice.lastProcessedMs ? (now - newDevice.lastProcessedMs) : Infinity;
     if (!newDevice.throttleTimer) {
-      const delay = Math.max(0, cfg.minFrameInterval - (Number.isFinite(since) ? since : 0));
+      const delay = Math.max(0, newDevice.cfg.minFrameInterval - (Number.isFinite(since) ? since : 0));
       newDevice.throttleTimer = setTimeout(flushPending, delay);
     }
   });

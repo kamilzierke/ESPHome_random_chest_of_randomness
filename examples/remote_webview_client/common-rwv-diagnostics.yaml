@@ -53,3 +53,26 @@ remote_webview:
       name: "RWV Reconnect"
     debug_overlay_switch:
       name: "RWV Debug Overlay"
+    render_mode_select:
+      name: "RWV Render Mode"
+      options:
+        - auto
+        - jpeg
+        - png
+        - raw565
+        - raw565_rle
+    jpeg_quality_number:
+      name: "RWV JPEG Quality"
+      min_value: 20
+      max_value: 95
+      step: 5
+    min_frame_interval_number:
+      name: "RWV Min Frame Interval"
+      min_value: 0
+      max_value: 1000
+      step: 10
+    tile_size_number:
+      name: "RWV Tile Size"
+      min_value: 16
+      max_value: 256
+      step: 16

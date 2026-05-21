@@ -14,6 +14,12 @@
 #ifdef USE_BUTTON
 #include "esphome/components/button/button.h"
 #endif
+#ifdef USE_NUMBER
+#include "esphome/components/number/number.h"
+#endif
+#ifdef USE_SELECT
+#include "esphome/components/select/select.h"
+#endif
 #include "JPEGDEC.h"
 #include "protocol.h"
 #include "remote_webview_config.h"
@@ -54,6 +60,7 @@ class RemoteWebView : public Component {
   void set_every_nth_frame(int v) { every_nth_frame_ = v; }
   void set_min_frame_interval(int v) { min_frame_interval_ = v; }
   void set_jpeg_quality(int v) { jpeg_quality_ = v; }
+  void set_render_mode(int v) { render_mode_ = v; }
   void set_max_bytes_per_msg(int v) { max_bytes_per_msg_ = v; }
   void set_big_endian(bool v) { rgb565_big_endian_ = v; }
   void set_rotation(int v) { rotation_ = v; }
@@ -88,6 +95,14 @@ class RemoteWebView : public Component {
   void set_request_keyframe_button(button::Button *b) { request_keyframe_button_ = b; }
   void set_reconnect_button(button::Button *b) { reconnect_button_ = b; }
 #endif
+#ifdef USE_NUMBER
+  void set_jpeg_quality_number(number::Number *n) { jpeg_quality_number_ = n; }
+  void set_min_frame_interval_number(number::Number *n) { min_frame_interval_number_ = n; }
+  void set_tile_size_number(number::Number *n) { tile_size_number_ = n; }
+#endif
+#ifdef USE_SELECT
+  void set_render_mode_select(select::Select *s) { render_mode_select_ = s; }
+#endif
 
   void disable_touch(bool disable);
   bool is_touch_enabled() const { return !touch_disabled_; }
@@ -98,6 +113,10 @@ class RemoteWebView : public Component {
   bool is_debug_overlay_enabled() const { return debug_overlay_enabled_; }
   void request_full_frame();
   void reconnect();
+  void set_runtime_jpeg_quality(int v);
+  void set_runtime_min_frame_interval(int v);
+  void set_runtime_tile_size(int v);
+  void set_runtime_render_mode(int v);
 
   uint32_t get_decode_drop_count() const { return decode_drop_count_; }
   uint32_t get_decode_avg_ms() const {
@@ -107,6 +126,11 @@ class RemoteWebView : public Component {
   uint32_t get_render_avg_ms() const { return frame_render_avg_ms_; }
   uint32_t get_last_frame_id() const { return last_frame_id_; }
   uint32_t get_reconnect_count() const { return reconnect_count_; }
+  int get_jpeg_quality() const { return jpeg_quality_; }
+  int get_min_frame_interval() const { return min_frame_interval_; }
+  int get_tile_size() const { return tile_size_; }
+  int get_render_mode() const { return render_mode_; }
+  const char *get_render_mode_name() const { return render_mode_name_(render_mode_); }
 
   void setup() override;
   void loop() override { maybe_publish_diagnostics_(); }
@@ -145,6 +169,7 @@ class RemoteWebView : public Component {
   int every_nth_frame_{-1};
   int min_frame_interval_{-1};
   int jpeg_quality_{-1};
+  int render_mode_{1};
   int max_bytes_per_msg_{-1};
   bool rgb565_big_endian_{true};
   int rotation_{0};
@@ -221,6 +246,14 @@ class RemoteWebView : public Component {
   button::Button *request_keyframe_button_{nullptr};
   button::Button *reconnect_button_{nullptr};
 #endif
+#ifdef USE_NUMBER
+  number::Number *jpeg_quality_number_{nullptr};
+  number::Number *min_frame_interval_number_{nullptr};
+  number::Number *tile_size_number_{nullptr};
+#endif
+#ifdef USE_SELECT
+  select::Select *render_mode_select_{nullptr};
+#endif
 
   QueueHandle_t     q_decode_{nullptr};
   SemaphoreHandle_t ws_send_mtx_{nullptr};
@@ -251,6 +284,8 @@ class RemoteWebView : public Component {
   bool ws_send_keepalive_();
   bool ws_send_open_url_(const char *url, uint16_t flags);
   bool ws_send_client_control_(proto::ClientControlCmd cmd, uint8_t value);
+  bool ws_send_client_config_(proto::ClientConfigField field, uint32_t value);
+  void sync_runtime_config_();
 
   void clear_decode_queue_();
   void apply_stream_state_();
@@ -260,12 +295,14 @@ class RemoteWebView : public Component {
   void publish_stream_paused_state_();
   void publish_touch_enabled_state_();
   void publish_debug_overlay_state_();
+  void publish_runtime_control_states_();
 
   std::string resolve_device_id_() const;
   std::string build_ws_uri_() const;
   static void append_q_int_(std::string &s, const char *k, int v);
   static void append_q_float_(std::string &s, const char *k, float v);
   static void append_q_str_(std::string &s, const char *k, const char *v);
+  static const char *render_mode_name_(int mode);
 
   friend class RemoteWebViewTouchListener;
 };
@@ -333,6 +370,54 @@ class RemoteWebViewReconnectButton : public button::Button {
 
  protected:
   void press_action() override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+#endif
+
+#ifdef USE_NUMBER
+class RemoteWebViewJpegQualityNumber : public number::Number {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void control(float value) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+
+class RemoteWebViewMinFrameIntervalNumber : public number::Number {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void control(float value) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+
+class RemoteWebViewTileSizeNumber : public number::Number {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void control(float value) override;
+
+ private:
+  RemoteWebView *parent_{nullptr};
+};
+#endif
+
+#ifdef USE_SELECT
+class RemoteWebViewRenderModeSelect : public select::Select {
+ public:
+  void set_parent(RemoteWebView *parent) { parent_ = parent; }
+
+ protected:
+  void control(size_t index) override;
 
  private:
   RemoteWebView *parent_{nullptr};

@@ -18,6 +18,9 @@
 // ClientControl message:
 //   [type u8=6][ver u8=1][cmd u8][value u8]
 //   cmd: 1=PauseStream, 2=RequestKeyframe, 3=SetDebugOverlay
+// ClientConfig message:
+//   [type u8=7][ver u8=1][field u8][value u32]
+//   field: 1=RenderMode, 2=JpegQuality, 3=MinFrameInterval, 4=TileSize
 //
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -30,6 +33,7 @@ export enum MsgType {
   OpenURL       = 4,
   Keepalive     = 5,
   ClientControl = 6,
+  ClientConfig  = 7,
 }
 
 export enum Encoding {
@@ -54,6 +58,14 @@ export enum ClientControlCmd {
   PauseStream     = 1,
   RequestKeyframe = 2,
   SetDebugOverlay = 3,
+}
+
+export enum ClientConfigField {
+  Unknown          = 0,
+  RenderMode       = 1,
+  JpegQuality      = 2,
+  MinFrameInterval = 3,
+  TileSize         = 4,
 }
 
 export const FLAG_LAST_OF_FRAME = 1 << 0;
@@ -86,12 +98,18 @@ export interface ClientControlPacket {
   value: number;
 }
 
+export interface ClientConfigPacket {
+  field: ClientConfigField;
+  value: number;
+}
+
 export const FRAME_HEADER_BYTES = 1 + 1 + 4 + 1 + 2 + 2;  // 11
 export const TILE_HEADER_BYTES  = 2 + 2 + 2 + 2 + 4;      // 12
 export const TOUCH_BYTES        = 1 + 1 + 1 + 1 + 2 + 2;  // 8
 export const FRAME_STATS_BYTES  = 1 + 1 + 4 + 4;          // 10
 export const OPENURL_HEADER_BYTES = 1 + 1 + 2 + 4;        // 8
 export const CLIENT_CONTROL_BYTES = 1 + 1 + 1 + 1;        // 4
+export const CLIENT_CONFIG_BYTES  = 1 + 1 + 1 + 4;        // 7
 
 const clampU16 = (v: number) => (v < 0 ? 0 : v > 0xffff ? 0xffff : v|0);
 
@@ -158,6 +176,33 @@ export function parseClientControlPacket(buf: Buffer): ClientControlPacket | nul
 
   const value = buf.readUInt8(3);
   return { cmd, value };
+}
+
+export function buildClientConfigPacket(field: ClientConfigField, value: number): Buffer {
+  const buf = Buffer.alloc(CLIENT_CONFIG_BYTES);
+  buf.writeUInt8(MsgType.ClientConfig, 0);
+  buf.writeUInt8(PROTOCOL_VERSION, 1);
+  buf.writeUInt8(field, 2);
+  buf.writeUInt32LE(value >>> 0, 3);
+  return buf;
+}
+
+export function parseClientConfigPacket(buf: Buffer): ClientConfigPacket | null {
+  if (!Buffer.isBuffer(buf) || buf.length < CLIENT_CONFIG_BYTES) return null;
+  if (buf.readUInt8(0) !== MsgType.ClientConfig) return null;
+  if (buf.readUInt8(1) !== PROTOCOL_VERSION) return null;
+
+  const field = buf.readUInt8(2) as ClientConfigField;
+  if (
+    field !== ClientConfigField.RenderMode &&
+    field !== ClientConfigField.JpegQuality &&
+    field !== ClientConfigField.MinFrameInterval &&
+    field !== ClientConfigField.TileSize
+  )
+    return null;
+
+  const value = buf.readUInt32LE(3);
+  return { field, value };
 }
 
 export function buildFrameStatsPacket(): Buffer {

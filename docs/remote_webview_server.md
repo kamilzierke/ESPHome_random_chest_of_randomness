@@ -49,6 +49,7 @@ Stream defaults:
 - `every_nth_frame`
 - `min_frame_interval_ms`
 - `jpeg_quality`
+- `render_mode`
 - `max_bytes_per_message`
 
 ## Login Flow
@@ -76,6 +77,7 @@ The server logs effective per-device config:
   tileSize=48
   minFrameInterval=80
   jpegQuality=70
+  renderMode=jpeg
 ```
 
 If these values match add-on defaults instead of ESPHome YAML, the ESPHome firmware is probably using a cached or old external component build.
@@ -98,5 +100,12 @@ ESPHome can also expose native Home Assistant controls with the `controls:` bloc
 - `PauseStream` - used by `pause_switch` when `stream_control_enabled: true`.
 - `RequestKeyframe` - used by `request_keyframe_button` when `stream_control_enabled: true`.
 - `SetDebugOverlay` - used by `debug_overlay_switch` when `stream_control_enabled: true`. The server stores the state, requests a keyframe, and draws diagnostic borders on transmitted rects before encoding. Full-frame rects are blue; partial rects are amber.
+
+Runtime tuning uses `ClientConfig` packets:
+
+- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the only fully implemented image path today; PNG/RAW565 modes are protocol/runtime plumbing for upcoming format work.
+- `JpegQuality` - updates the active JPEG quality for the next encoded frames.
+- `MinFrameInterval` - updates the per-device frame throttle without reconnecting.
+- `TileSize` - updates the server tile grid and requests a keyframe.
 
 The `reconnect_button` and `touch_switch` are local ESP client controls.

@@ -48,6 +48,9 @@ wss.on("connection", async (ws, req) => {
       case MsgType.ClientControl:
         inputRouter.handleClientControlPacket(dev, buf);
         break;
+      case MsgType.ClientConfig:
+        inputRouter.handleClientConfigPacket(dev, buf);
+        break;
       default:
         break;
     }

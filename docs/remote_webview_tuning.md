@@ -21,6 +21,17 @@ This document collects practical profiles and diagnostics for tuning Remote WebV
 | Debug tiles | See what the server sends | Enable `debug_overlay_switch`; full-frame rects are blue and partial rects are amber. |
 | Slow network | Reduce bandwidth and queue pressure | `jpeg_quality: 55-65`, `tile_size: 64`, `min_frame_interval: 120`, keep `max_bytes_per_msg: 61440` |
 
+## Runtime Controls
+
+`common-rwv-diagnostics.yaml` exposes tuning controls in Home Assistant:
+
+| Control | Effect |
+| --- | --- |
+| `RWV Render Mode` | Sends the requested render mode to the server and forces a keyframe. Only JPEG is fully implemented today. |
+| `RWV JPEG Quality` | Changes JPEG quality for subsequent frames without reconnecting. |
+| `RWV Min Frame Interval` | Changes server-side frame throttle without reconnecting. |
+| `RWV Tile Size` | Rebuilds the server tile grid and forces a keyframe. |
+
 ## What To Watch
 
 Use `common-rwv-diagnostics.yaml` to expose native ESPHome entities in Home Assistant.

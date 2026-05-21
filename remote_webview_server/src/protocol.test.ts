@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   CLIENT_CONTROL_BYTES,
+  CLIENT_CONFIG_BYTES,
+  ClientConfigField,
   ClientControlCmd,
   Encoding,
   FLAG_IS_FULL_FRAME,
@@ -15,8 +17,10 @@ import {
   buildFramePacket,
   buildFramePackets,
   buildFrameStatsPacket,
+  buildClientConfigPacket,
   buildTouchPacket,
   iterateTiles,
+  parseClientConfigPacket,
   parseClientControlPacket,
   parseFrameHeader,
   parseTouchPacket,
@@ -101,6 +105,18 @@ describe("remote webview protocol", () => {
     expect(parseClientControlPacket(packet)).toEqual({
       cmd: ClientControlCmd.SetDebugOverlay,
       value: 1,
+    });
+  });
+
+  test("ClientConfig packets are 7 bytes and carry a u32 runtime value", () => {
+    const packet = buildClientConfigPacket(ClientConfigField.MinFrameInterval, 160);
+
+    expect(packet).toHaveLength(CLIENT_CONFIG_BYTES);
+    expect(packet.readUInt8(0)).toBe(MsgType.ClientConfig);
+    expect(packet.readUInt8(1)).toBe(PROTOCOL_VERSION);
+    expect(parseClientConfigPacket(packet)).toEqual({
+      field: ClientConfigField.MinFrameInterval,
+      value: 160,
     });
   });
 });

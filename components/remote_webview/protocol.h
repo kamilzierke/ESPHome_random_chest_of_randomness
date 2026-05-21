@@ -9,10 +9,11 @@ constexpr uint8_t kProtocolVersion = 1;
 constexpr uint8_t kFlagLastOfFrame = 1u<<0;
 constexpr uint8_t kFlagIsFullFrame = 1u<<1;
 
-enum class MsgType   : uint8_t { Unknown = 0, Frame = 1, Touch = 2, FrameStats = 3, OpenURL = 4, Keepalive = 5, ClientControl = 6 };
+enum class MsgType   : uint8_t { Unknown = 0, Frame = 1, Touch = 2, FrameStats = 3, OpenURL = 4, Keepalive = 5, ClientControl = 6, ClientConfig = 7 };
 enum class Encoding  : uint8_t { Unknown = 0, PNG = 1, JPEG = 2, RAW565 = 3, RAW565_RLE = 4, RAW565_LZ4 = 5 };
 enum class TouchType : uint8_t { Unknown = 0, Down = 1, Move = 2, Up = 3 };
 enum class ClientControlCmd : uint8_t { Unknown = 0, PauseStream = 1, RequestKeyframe = 2, SetDebugOverlay = 3 };
+enum class ClientConfigField : uint8_t { Unknown = 0, RenderMode = 1, JpegQuality = 2, MinFrameInterval = 3, TileSize = 4 };
 
 #if defined(__GNUC__)
   #define RWV_PACKED __attribute__((packed))
@@ -84,6 +85,15 @@ struct RWV_PACKED ClientControlPacket {
 };
 static_assert(sizeof(ClientControlPacket) == 4, "ClientControlPacket wire size must be 4");
 
+// [type:1][ver:1][field:1][value:4] => 7 bytes
+struct RWV_PACKED ClientConfigPacket {
+  MsgType type;
+  uint8_t ver;
+  ClientConfigField field;
+  uint32_t value;
+};
+static_assert(sizeof(ClientConfigPacket) == 7, "ClientConfigPacket wire size must be 7");
+
 #if !defined(__GNUC__)
   #pragma pack(pop)
 #endif
@@ -92,6 +102,7 @@ static_assert(sizeof(ClientControlPacket) == 4, "ClientControlPacket wire size m
 inline uint16_t rd16(const uint8_t *p){ return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
 inline uint32_t rd32(const uint8_t *p){ return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24); }
 inline void wr16(uint8_t *p, uint16_t v){ p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); }
+inline void wr32(uint8_t *p, uint32_t v){ p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24); }
 
 struct FrameInfo {
   uint32_t frame_id;
@@ -197,5 +208,15 @@ inline size_t build_client_control_packet(ClientControlCmd cmd, uint8_t value, u
   memcpy(out, &pkt, sizeof(pkt));
   return sizeof(pkt);
 }
-} // namespace esphome::remote_webview::proto
 
+inline size_t build_client_config_packet(ClientConfigField field, uint32_t value, uint8_t *out) {
+  if (!out) return 0;
+  ClientConfigPacket pkt{};
+  pkt.type = MsgType::ClientConfig;
+  pkt.ver = kProtocolVersion;
+  pkt.field = field;
+  wr32(reinterpret_cast<uint8_t*>(&pkt.value), value);
+  memcpy(out, &pkt, sizeof(pkt));
+  return sizeof(pkt);
+}
+} // namespace esphome::remote_webview::proto

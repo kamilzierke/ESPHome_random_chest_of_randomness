@@ -52,6 +52,7 @@ void RemoteWebView::setup() {
   publish_stream_paused_state_();
   publish_touch_enabled_state_();
   publish_debug_overlay_state_();
+  publish_runtime_control_states_();
   maybe_publish_diagnostics_();
 
 #if REMOTE_WEBVIEW_HW_JPEG
@@ -131,6 +132,7 @@ void RemoteWebView::dump_config() {
   print_opt_int   ("every_nth_frame",           every_nth_frame_);
   print_opt_int   ("min_frame_interval",        min_frame_interval_);
   print_opt_int   ("jpeg_quality",              jpeg_quality_);
+  ESP_LOGCONFIG(TAG, "  render_mode: %s", render_mode_name_(render_mode_));
   print_opt_int   ("max_bytes_per_msg",         max_bytes_per_msg_);
   print_opt_int   ("big_endian",                rgb565_big_endian_);
   print_opt_int   ("rotation",                  rotation_);
@@ -182,6 +184,67 @@ void RemoteWebView::set_debug_overlay_enabled(bool enabled) {
   ESP_LOGD(TAG, "debug overlay %s", enabled ? "enabled" : "disabled");
 }
 
+void RemoteWebView::set_runtime_jpeg_quality(int v) {
+  if (v < 1) v = 1;
+  if (v > 100) v = 100;
+  if (jpeg_quality_ == v) {
+    publish_runtime_control_states_();
+    return;
+  }
+
+  jpeg_quality_ = v;
+  if (stream_control_enabled_) {
+    ws_send_client_config_(proto::ClientConfigField::JpegQuality, (uint32_t) v);
+  }
+  publish_runtime_control_states_();
+  ESP_LOGD(TAG, "jpeg quality set to %d", v);
+}
+
+void RemoteWebView::set_runtime_min_frame_interval(int v) {
+  if (v < 0) v = 0;
+  if (min_frame_interval_ == v) {
+    publish_runtime_control_states_();
+    return;
+  }
+
+  min_frame_interval_ = v;
+  if (stream_control_enabled_) {
+    ws_send_client_config_(proto::ClientConfigField::MinFrameInterval, (uint32_t) v);
+  }
+  publish_runtime_control_states_();
+  ESP_LOGD(TAG, "min frame interval set to %d ms", v);
+}
+
+void RemoteWebView::set_runtime_tile_size(int v) {
+  if (v < 1) v = 1;
+  if (tile_size_ == v) {
+    publish_runtime_control_states_();
+    return;
+  }
+
+  tile_size_ = v;
+  if (stream_control_enabled_) {
+    ws_send_client_config_(proto::ClientConfigField::TileSize, (uint32_t) v);
+  }
+  publish_runtime_control_states_();
+  ESP_LOGD(TAG, "tile size set to %d", v);
+}
+
+void RemoteWebView::set_runtime_render_mode(int v) {
+  if (v < 0 || v > 4) v = 1;
+  if (render_mode_ == v) {
+    publish_runtime_control_states_();
+    return;
+  }
+
+  render_mode_ = v;
+  if (stream_control_enabled_) {
+    ws_send_client_config_(proto::ClientConfigField::RenderMode, (uint32_t) v);
+  }
+  publish_runtime_control_states_();
+  ESP_LOGD(TAG, "render mode set to %s", render_mode_name_(render_mode_));
+}
+
 void RemoteWebView::request_full_frame() {
   if (!stream_control_enabled_)
     return;
@@ -228,7 +291,24 @@ void RemoteWebView::apply_stream_state_() {
   }
 
   ws_send_client_control_(proto::ClientControlCmd::PauseStream, 0);
+  sync_runtime_config_();
   ws_send_client_control_(proto::ClientControlCmd::RequestKeyframe, 1);
+}
+
+void RemoteWebView::sync_runtime_config_() {
+  if (!stream_control_enabled_)
+    return;
+
+  if (!ws_client_ || !esp_websocket_client_is_connected(ws_client_))
+    return;
+
+  ws_send_client_config_(proto::ClientConfigField::RenderMode, (uint32_t) render_mode_);
+  if (jpeg_quality_ >= 0)
+    ws_send_client_config_(proto::ClientConfigField::JpegQuality, (uint32_t) jpeg_quality_);
+  if (min_frame_interval_ >= 0)
+    ws_send_client_config_(proto::ClientConfigField::MinFrameInterval, (uint32_t) min_frame_interval_);
+  if (tile_size_ >= 0)
+    ws_send_client_config_(proto::ClientConfigField::TileSize, (uint32_t) tile_size_);
 }
 
 void RemoteWebView::maybe_log_telemetry_() {
@@ -315,6 +395,17 @@ void RemoteWebView::publish_debug_overlay_state_() {
 #endif
 }
 
+void RemoteWebView::publish_runtime_control_states_() {
+#if defined(USE_NUMBER)
+  if (jpeg_quality_number_ && jpeg_quality_ >= 0) jpeg_quality_number_->publish_state((float) jpeg_quality_);
+  if (min_frame_interval_number_ && min_frame_interval_ >= 0) min_frame_interval_number_->publish_state((float) min_frame_interval_);
+  if (tile_size_number_ && tile_size_ >= 0) tile_size_number_->publish_state((float) tile_size_);
+#endif
+#if defined(USE_SELECT)
+  if (render_mode_select_) render_mode_select_->publish_state(render_mode_name_(render_mode_));
+#endif
+}
+
 void RemoteWebView::start_ws_task_() {
   xTaskCreatePinnedToCore(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0);
 }
@@ -378,6 +469,7 @@ void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32
         }
         self_->last_keepalive_us_ = esp_timer_get_time();
         self_->apply_stream_state_();
+        self_->sync_runtime_config_();
         if (self_->stream_control_enabled_ && self_->debug_overlay_enabled_) {
           self_->ws_send_client_control_(proto::ClientControlCmd::SetDebugOverlay, 1);
         }
@@ -788,6 +880,24 @@ bool RemoteWebView::ws_send_client_control_(proto::ClientControlCmd cmd, uint8_t
   return r == (int)n;
 }
 
+bool RemoteWebView::ws_send_client_config_(proto::ClientConfigField field, uint32_t value) {
+  if (!ws_client_ || !ws_send_mtx_ || !esp_websocket_client_is_connected(ws_client_))
+    return false;
+
+  uint8_t pkt[sizeof(proto::ClientConfigPacket)];
+  const size_t n = proto::build_client_config_packet(field, value, pkt);
+  if (!n)
+    return false;
+
+  const TickType_t to = pdMS_TO_TICKS(50);
+  if (xSemaphoreTake(ws_send_mtx_, to) != pdTRUE)
+    return false;
+
+  const int r = esp_websocket_client_send_bin(ws_client_, (const char*)pkt, (int)n, to);
+  xSemaphoreGive(ws_send_mtx_);
+  return r == (int)n;
+}
+
 void RemoteWebViewTouchListener::update(const touchscreen::TouchPoints_t &pts) {
   if (!parent_) return;
 
@@ -857,6 +967,46 @@ void RemoteWebViewDebugOverlaySwitch::write_state(bool state) {
   }
   parent_->set_debug_overlay_enabled(state);
   publish_state(parent_->is_debug_overlay_enabled());
+}
+#endif
+
+#ifdef USE_NUMBER
+void RemoteWebViewJpegQualityNumber::control(float value) {
+  if (!parent_) {
+    publish_state(value);
+    return;
+  }
+  parent_->set_runtime_jpeg_quality((int) (value + (value >= 0.0f ? 0.5f : -0.5f)));
+  publish_state((float) parent_->get_jpeg_quality());
+}
+
+void RemoteWebViewMinFrameIntervalNumber::control(float value) {
+  if (!parent_) {
+    publish_state(value);
+    return;
+  }
+  parent_->set_runtime_min_frame_interval((int) (value + (value >= 0.0f ? 0.5f : -0.5f)));
+  publish_state((float) parent_->get_min_frame_interval());
+}
+
+void RemoteWebViewTileSizeNumber::control(float value) {
+  if (!parent_) {
+    publish_state(value);
+    return;
+  }
+  parent_->set_runtime_tile_size((int) (value + (value >= 0.0f ? 0.5f : -0.5f)));
+  publish_state((float) parent_->get_tile_size());
+}
+#endif
+
+#ifdef USE_SELECT
+void RemoteWebViewRenderModeSelect::control(size_t index) {
+  if (!parent_) {
+    publish_state(index);
+    return;
+  }
+  parent_->set_runtime_render_mode((int) index);
+  publish_state(parent_->get_render_mode_name());
 }
 #endif
 
@@ -962,9 +1112,21 @@ std::string RemoteWebView::build_ws_uri_() const {
   append_q_int_(uri,   "enf",  every_nth_frame_);
   append_q_int_(uri,   "mfi",  min_frame_interval_);
   append_q_int_(uri,   "q",    jpeg_quality_);
+  append_q_str_(uri,   "rm",   render_mode_name_(render_mode_));
   append_q_int_(uri,   "mbpm", max_bytes_per_msg_);
 
   return uri;
+}
+
+const char *RemoteWebView::render_mode_name_(int mode) {
+  switch (mode) {
+    case 0: return "auto";
+    case 1: return "jpeg";
+    case 2: return "png";
+    case 3: return "raw565";
+    case 4: return "raw565_rle";
+    default: return "jpeg";
+  }
 }
 
 }  // namespace remote_webview
