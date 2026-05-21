@@ -1,5 +1,5 @@
 name: "Remote WebView Server"
-version: "1.1.4"
+version: "1.1.5"
 slug: "remote_webview_server"
 description: "Streams a Home Assistant dashboard or any website to ESP32-based displays as JPEG tiles over WebSocket."
 url: "https://github.com/kamilzierke/ESPHome_random_chest_of_randomness/tree/main/remote_webview_server"
