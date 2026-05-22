@@ -118,6 +118,11 @@ export function updateDeviceRuntimeConfig(dev: DeviceSession, patch: RuntimeConf
     fullFrameEvery: nextCfg.fullFrameEvery,
     maxBytesPerMessage: nextCfg.maxBytesPerMessage,
     renderMode: nextCfg.renderMode,
+    adaptiveQualityEnabled: nextCfg.adaptiveQualityEnabled,
+    adaptiveMinJpegQuality: nextCfg.adaptiveMinJpegQuality,
+    adaptiveQualityStep: nextCfg.adaptiveQualityStep,
+    adaptiveSplitEnabled: nextCfg.adaptiveSplitEnabled,
+    adaptiveSplitMinTileSize: nextCfg.adaptiveSplitMinTileSize,
   });
   if (forceFullFrame) {
     broadcaster.clearQueue(dev.deviceId);
@@ -184,6 +189,11 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
     fullFrameEvery: cfg.fullFrameEvery,
     maxBytesPerMessage: cfg.maxBytesPerMessage,
     renderMode: cfg.renderMode,
+    adaptiveQualityEnabled: cfg.adaptiveQualityEnabled,
+    adaptiveMinJpegQuality: cfg.adaptiveMinJpegQuality,
+    adaptiveQualityStep: cfg.adaptiveQualityStep,
+    adaptiveSplitEnabled: cfg.adaptiveSplitEnabled,
+    adaptiveSplitMinTileSize: cfg.adaptiveSplitMinTileSize,
   });
 
   const newDevice: DeviceSession = {

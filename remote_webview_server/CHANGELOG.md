@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.10 - 2026-05-22
+
+### Added
+
+- Added adaptive JPEG fallback before oversized tile fallback: the server now retries lower JPEG quality, then splits oversized tiles before using the final debug fallback.
+- Added add-on options for adaptive fallback tuning: `adaptive_quality_enabled`, `adaptive_min_jpeg_quality`, `adaptive_quality_step`, `adaptive_split_enabled`, and `adaptive_split_min_tile_size`.
+
+### Changed
+
+- Oversized JPEG tiles no longer immediately turn into red fallback tiles in normal conditions.
+
 ## 1.1.9 - 2026-05-22
 
 ### Added

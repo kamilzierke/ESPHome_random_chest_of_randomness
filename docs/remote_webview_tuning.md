@@ -24,6 +24,24 @@ This document collects practical profiles and diagnostics for tuning Remote WebV
 | Debug tiles | See what the server sends | Enable `debug_overlay_switch`; full-frame rects are blue and partial rects are amber. |
 | Slow network | Reduce bandwidth and queue pressure | `jpeg_quality: 55-65`, `tile_size: 64`, `min_frame_interval: 120`, keep `max_bytes_per_msg: 61440` |
 
+## Adaptive Fallback
+
+The server protects `max_bytes_per_message` in stages:
+
+1. For JPEG tiles, retry lower JPEG quality down to `adaptive_min_jpeg_quality`.
+2. If the encoded tile is still too large, split the rect recursively while `adaptive_split_enabled` is true.
+3. Use the red fallback tile only as a final debug fallback when the configured limits make the tile impossible to send normally.
+
+Recommended defaults for 480x480 panels are:
+
+```yaml
+adaptive_quality_enabled: true
+adaptive_min_jpeg_quality: 35
+adaptive_quality_step: 10
+adaptive_split_enabled: true
+adaptive_split_min_tile_size: 16
+```
+
 ## Runtime Controls
 
 `common-rwv-diagnostics.yaml` exposes tuning controls in Home Assistant:

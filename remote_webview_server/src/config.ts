@@ -16,6 +16,11 @@ export type DeviceConfig = {
   maxBytesPerMessage: number;       // bytes (>0)
   rotation: Rotation;               // degrees
   renderMode: RenderMode;           // requested render mode
+  adaptiveQualityEnabled: boolean;  // retry lower JPEG quality before splitting/fallback
+  adaptiveMinJpegQuality: number;   // minimum JPEG quality for adaptive retry
+  adaptiveQualityStep: number;      // JPEG quality decrement per retry
+  adaptiveSplitEnabled: boolean;    // split oversized tiles before final fallback
+  adaptiveSplitMinTileSize: number; // px
 };
 
 const DEFAULTS = {
@@ -29,6 +34,11 @@ const DEFAULTS = {
   maxBytesPerMessage: 14336,
   rotation: 0,
   renderMode: "jpeg",
+  adaptiveQualityEnabled: true,
+  adaptiveMinJpegQuality: 35,
+  adaptiveQualityStep: 10,
+  adaptiveSplitEnabled: true,
+  adaptiveSplitMinTileSize: 16,
 } as const;
 
 const store = new Map<string, DeviceConfig>();
@@ -65,6 +75,13 @@ function float01(input?: string | null): number | undefined {
   if (v == null) return undefined;
   if (v < 0 || v > 1) throw new Error(`invalid 0..1 number: "${input}"`);
   return v;
+}
+function bool(input?: string | null): boolean | undefined {
+  if (input == null) return undefined;
+  const normalized = input.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw new Error(`invalid boolean: "${input}"`);
 }
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -116,6 +133,11 @@ function readEnvFallbacks(): Partial<DeviceConfig> {
   const Q = val("JPEG_QUALITY");
   const MBPM = val("MAX_BYTES_PER_MESSAGE");
   const RM = val("RENDER_MODE");
+  const AQE = val("ADAPTIVE_QUALITY_ENABLED");
+  const AMJQ = val("ADAPTIVE_MIN_JPEG_QUALITY");
+  const AQS = val("ADAPTIVE_QUALITY_STEP");
+  const ASE = val("ADAPTIVE_SPLIT_ENABLED");
+  const ASMTS = val("ADAPTIVE_SPLIT_MIN_TILE_SIZE");
 
   if (TS) out.tileSize = intPos(TS)!;
   if (FFTC) out.fullFrameTileCount = intPos(FFTC)!;
@@ -126,6 +148,11 @@ function readEnvFallbacks(): Partial<DeviceConfig> {
   if (Q) out.jpegQuality = clamp(intPos(Q)!, 1, 100);
   if (MBPM) out.maxBytesPerMessage = intPos(MBPM)!;
   if (RM) out.renderMode = parseRenderMode(RM)!;
+  if (AQE != null) out.adaptiveQualityEnabled = bool(AQE)!;
+  if (AMJQ) out.adaptiveMinJpegQuality = clamp(intPos(AMJQ)!, 1, 100);
+  if (AQS) out.adaptiveQualityStep = clamp(intPos(AQS)!, 1, 100);
+  if (ASE != null) out.adaptiveSplitEnabled = bool(ASE)!;
+  if (ASMTS) out.adaptiveSplitMinTileSize = intPos(ASMTS)!;
 
   return out;
 }
@@ -150,6 +177,11 @@ export function makeConfigFromParams(params: URLSearchParams): DeviceConfig {
   const rotation = intNonNeg(params.get("r")) as 0 | 90 | 180 | 270 | undefined
     ?? DEFAULTS.rotation;
   const renderMode = parseRenderMode(params.get("rm")) ?? envFallbacks.renderMode ?? DEFAULTS.renderMode;
+  const adaptiveQualityEnabled = envFallbacks.adaptiveQualityEnabled ?? DEFAULTS.adaptiveQualityEnabled;
+  const adaptiveMinJpegQuality = envFallbacks.adaptiveMinJpegQuality ?? DEFAULTS.adaptiveMinJpegQuality;
+  const adaptiveQualityStep = envFallbacks.adaptiveQualityStep ?? DEFAULTS.adaptiveQualityStep;
+  const adaptiveSplitEnabled = envFallbacks.adaptiveSplitEnabled ?? DEFAULTS.adaptiveSplitEnabled;
+  const adaptiveSplitMinTileSize = envFallbacks.adaptiveSplitMinTileSize ?? DEFAULTS.adaptiveSplitMinTileSize;
 
   const dimensions = getRotatedDimensions(width, height, rotation);
 
@@ -166,6 +198,11 @@ export function makeConfigFromParams(params: URLSearchParams): DeviceConfig {
     maxBytesPerMessage,
     rotation,
     renderMode,
+    adaptiveQualityEnabled,
+    adaptiveMinJpegQuality,
+    adaptiveQualityStep,
+    adaptiveSplitEnabled,
+    adaptiveSplitMinTileSize,
   };
 }
 
@@ -186,7 +223,12 @@ export function deviceConfigsEqual(
     a.jpegQuality === b.jpegQuality &&
     a.maxBytesPerMessage === b.maxBytesPerMessage &&
     a.rotation === b.rotation &&
-    a.renderMode === b.renderMode
+    a.renderMode === b.renderMode &&
+    a.adaptiveQualityEnabled === b.adaptiveQualityEnabled &&
+    a.adaptiveMinJpegQuality === b.adaptiveMinJpegQuality &&
+    a.adaptiveQualityStep === b.adaptiveQualityStep &&
+    a.adaptiveSplitEnabled === b.adaptiveSplitEnabled &&
+    a.adaptiveSplitMinTileSize === b.adaptiveSplitMinTileSize
   );
 }
 
@@ -204,6 +246,11 @@ export function logDeviceConfig(id: string, cfg: DeviceConfig): void {
     ["maxBytesPerMessage", cfg.maxBytesPerMessage],
     ["rotation", cfg.rotation],
     ["renderMode", cfg.renderMode],
+    ["adaptiveQualityEnabled", cfg.adaptiveQualityEnabled ? "true" : "false"],
+    ["adaptiveMinJpegQuality", cfg.adaptiveMinJpegQuality],
+    ["adaptiveQualityStep", cfg.adaptiveQualityStep],
+    ["adaptiveSplitEnabled", cfg.adaptiveSplitEnabled ? "true" : "false"],
+    ["adaptiveSplitMinTileSize", cfg.adaptiveSplitMinTileSize],
   ];
 
   const head = `[client_connect] id=${id}`;

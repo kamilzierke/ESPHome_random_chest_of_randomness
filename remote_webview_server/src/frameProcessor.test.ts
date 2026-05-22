@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import sharp from "sharp";
 import { Encoding, FRAME_HEADER_BYTES, TILE_HEADER_BYTES } from "./protocol.js";
 import { FrameProcessor, FrameProcessorCfg, drawTileDebugBorder } from "./frameProcessor.js";
 
@@ -60,6 +61,40 @@ describe("FrameProcessor render modes", () => {
     return { data: rgba, width, height };
   }
 
+  function makeBlueNoiseFrame(width: number, height: number) {
+    const rgba = Buffer.alloc(width * height * 4, 0);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const off = (y * width + x) * 4;
+        const v = (x * 17 + y * 31 + ((x * y) % 251)) & 0xff;
+        rgba[off] = v >> 3;
+        rgba[off + 1] = 96 + (v >> 2);
+        rgba[off + 2] = 160 + (v >> 3);
+        rgba[off + 3] = 0xff;
+      }
+    }
+    return { data: rgba, width, height };
+  }
+
+  async function jpegSize(frame: ReturnType<typeof makeBlueNoiseFrame>, quality: number): Promise<number> {
+    return sharp(frame.data, { raw: { width: frame.width, height: frame.height, channels: 4 } })
+      .jpeg({ quality, mozjpeg: false, chromaSubsampling: "4:2:0" })
+      .toBuffer()
+      .then((buf) => buf.length);
+  }
+
+  async function averageRgb(encodedJpeg: Buffer): Promise<[number, number, number]> {
+    const { data, info } = await sharp(encodedJpeg).raw().toBuffer({ resolveWithObject: true });
+    const sums = [0, 0, 0];
+    for (let i = 0; i < data.length; i += info.channels) {
+      sums[0] += data[i];
+      sums[1] += data[i + 1];
+      sums[2] += data[i + 2];
+    }
+    const pixels = data.length / info.channels;
+    return [sums[0] / pixels, sums[1] / pixels, sums[2] / pixels];
+  }
+
   it("encodes frame rects as PNG when renderMode is png", async () => {
     const out = await makeProcessor("png").processFrameAsync(makeSolidFrame());
 
@@ -96,6 +131,41 @@ describe("FrameProcessor render modes", () => {
     expect(out.rects.length).toBeGreaterThan(1);
     expect(out.rects.every((r) => r.data.length <= maxPayloadBytes)).toBe(true);
     expect(out.rects.reduce((sum, r) => sum + r.data.length, 0)).toBe(8 * 8 * 2);
+  });
+
+  it("retries JPEG at lower quality before using a fallback tile", async () => {
+    const frame = makeBlueNoiseFrame(64, 64);
+    const quality95Size = await jpegSize(frame, 95);
+    const quality35Size = await jpegSize(frame, 35);
+    const maxPayloadBytes = Math.floor((quality95Size + quality35Size) / 2);
+
+    const out = await makeProcessor("jpeg", {
+      jpegQuality: 95,
+      maxBytesPerMessage: FRAME_HEADER_BYTES + TILE_HEADER_BYTES + maxPayloadBytes,
+    }).processFrameAsync(frame);
+
+    expect(out.encoding).toBe(Encoding.JPEG);
+    expect(out.rects).toHaveLength(1);
+    expect(out.rects[0].data.length).toBeLessThanOrEqual(maxPayloadBytes);
+
+    const [r, g, b] = await averageRgb(out.rects[0].data);
+    expect(g).toBeGreaterThan(r);
+    expect(b).toBeGreaterThan(r);
+  });
+
+  it("splits JPEG tiles when lowering quality cannot fit the packet payload budget", async () => {
+    const frame = makeBlueNoiseFrame(96, 96);
+    const maxPayloadBytes = 900;
+
+    const out = await makeProcessor("jpeg", {
+      jpegQuality: 95,
+      adaptiveMinJpegQuality: 95,
+      maxBytesPerMessage: FRAME_HEADER_BYTES + TILE_HEADER_BYTES + maxPayloadBytes,
+    }).processFrameAsync(frame);
+
+    expect(out.encoding).toBe(Encoding.JPEG);
+    expect(out.rects.length).toBeGreaterThan(1);
+    expect(out.rects.every((r) => r.data.length <= maxPayloadBytes)).toBe(true);
   });
 
   it.each(["auto", "raw565_rle"])(

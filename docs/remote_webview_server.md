@@ -63,8 +63,15 @@ Stream defaults:
 - `jpeg_quality`
 - `render_mode`
 - `max_bytes_per_message`
+- `adaptive_quality_enabled`
+- `adaptive_min_jpeg_quality`
+- `adaptive_quality_step`
+- `adaptive_split_enabled`
+- `adaptive_split_min_tile_size`
 
 `render_mode` in the add-on UI exposes `auto`, `jpeg`, `png`, and `raw565`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning. `raw565` is an experimental direct RGB565 path intended for latency tests. `auto` currently behaves as a JPEG alias until the auto heuristic exists. Older clients may still request `raw565_rle`; the server accepts that value but sends JPEG frames until the ESPHome client draw path is implemented.
+
+Adaptive fallback keeps oversized encoded tiles within the WebSocket message budget. For JPEG it first retries lower quality down to `adaptive_min_jpeg_quality` using `adaptive_quality_step`. If the tile is still too large, and `adaptive_split_enabled` is true, the server splits the rect recursively until each encoded tile fits or reaches `adaptive_split_min_tile_size`. The red fallback tile is now a final debug fallback for cases that still cannot be represented within the configured constraints.
 
 ## Login Flow
 

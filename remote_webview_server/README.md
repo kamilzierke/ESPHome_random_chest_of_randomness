@@ -53,7 +53,13 @@ Add-on options are defaults. Values sent by an ESPHome client in its WebSocket q
 - `every_nth_frame` - Chromium screencast frame sampling.
 - `min_frame_interval_ms` - minimum processing interval between frames.
 - `jpeg_quality` - JPEG quality used for encoded tiles.
+- `render_mode` - requested render format; `jpeg` is the production default, `png` and `raw565` are experimental measurement modes.
 - `max_bytes_per_message` - maximum WebSocket message size.
+- `adaptive_quality_enabled` - retry lower JPEG quality before splitting or fallback.
+- `adaptive_min_jpeg_quality` - minimum JPEG quality used by adaptive retry.
+- `adaptive_quality_step` - JPEG quality decrement per retry.
+- `adaptive_split_enabled` - split oversized encoded tiles before using the final fallback.
+- `adaptive_split_min_tile_size` - minimum tile side length used by adaptive splitting.
 - `ws_port` - WebSocket stream port used by ESPHome clients.
 - `debug_port` - internal Chromium DevTools port.
 - `expose_debug_proxy` - expose DevTools through `debug_proxy_port` using `socat`.

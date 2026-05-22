@@ -26,4 +26,14 @@ describe("render mode config", () => {
   it("rejects unknown render modes at config parsing", () => {
     expect(() => makeConfigFromParams(makeParams("avif"))).toThrow(/invalid render mode/);
   });
+
+  it("uses adaptive fallback defaults", () => {
+    const cfg = makeConfigFromParams(makeParams("jpeg"));
+
+    expect(cfg.adaptiveQualityEnabled).toBe(true);
+    expect(cfg.adaptiveMinJpegQuality).toBe(35);
+    expect(cfg.adaptiveQualityStep).toBe(10);
+    expect(cfg.adaptiveSplitEnabled).toBe(true);
+    expect(cfg.adaptiveSplitMinTileSize).toBe(16);
+  });
 });

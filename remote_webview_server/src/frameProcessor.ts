@@ -27,6 +27,11 @@ export type FrameProcessorCfg = {
   fullFrameEvery: number;
   maxBytesPerMessage: number;
   renderMode?: string;
+  adaptiveQualityEnabled?: boolean;
+  adaptiveMinJpegQuality?: number;
+  adaptiveQualityStep?: number;
+  adaptiveSplitEnabled?: boolean;
+  adaptiveSplitMinTileSize?: number;
 };
 
 export class FrameProcessor {
@@ -89,15 +94,6 @@ export class FrameProcessor {
       out = await this._processPartialFrame(rgba, tiles, chosenEncoding, options.debugOverlayEnabled === true);
     }
 
-    const maxBytesPerTile = this._cfg.maxBytesPerMessage - FRAME_HEADER_BYTES - TILE_HEADER_BYTES;
-    for (let i = 0; i < out.rects.length; i++) {
-      const r = out.rects[i];
-      if (r.data.length > maxBytesPerTile) {
-        const redData = await this._makeRedFrameAsync(r.w, r.h, chosenEncoding);
-        out.rects[i] = { x: r.x, y: r.y, w: r.w, h: r.h, data: redData };
-      }
-    }
-
     this._iter++;
     return out;
   }
@@ -115,10 +111,7 @@ export class FrameProcessor {
     const rects: Rect[] = [];
 
     for (const r of rectsForFull) {
-      const raw = this._extractRaw(rgba, r.x, r.y, r.w, r.h);
-      if (debugOverlayEnabled) drawTileDebugBorder(raw, r.w, r.h, true);
-      const data = await this._encode(raw, r.w, r.h, encoding);
-      rects.push({ x: r.x, y: r.y, w: r.w, h: r.h, data });
+      rects.push(...await this._encodeRectAdaptive(rgba, r, encoding, debugOverlayEnabled, true));
     }
 
     for (const t of tilesInfo) this._prev![t.idx] = t.h32;
@@ -136,10 +129,7 @@ export class FrameProcessor {
 
     const out: Rect[] = [];
     for (const r of mergedRects) {
-      const raw = this._extractRaw(rgba, r.x, r.y, r.w, r.h);
-      if (debugOverlayEnabled) drawTileDebugBorder(raw, r.w, r.h, false);
-      const data = await this._encode(raw, r.w, r.h, encoding);
-      out.push({ ...r, data });
+      out.push(...await this._encodeRectAdaptive(rgba, r, encoding, debugOverlayEnabled, false));
     }
     for (const t of tiles) if (t.changed) this._prev![t.idx] = t.h32;
 
@@ -317,11 +307,11 @@ export class FrameProcessor {
       case Encoding.PNG:
         return this._encodePNG(rawRgba, w, h);
       case Encoding.JPEG:
-        return this._encodeJPEG(rawRgba, w, h);
+        return this._encodeJPEG(rawRgba, w, h, this._cfg.jpegQuality);
       case Encoding.RAW565:
         return this._encodeRAW565(rawRgba);
       default:
-        return this._encodeJPEG(rawRgba, w, h);
+        return this._encodeJPEG(rawRgba, w, h, this._cfg.jpegQuality);
     }
   }
 
@@ -339,9 +329,9 @@ export class FrameProcessor {
     }
   }
 
-  private async _encodeJPEG(rawRgba: Buffer, w: number, h: number): Promise<Buffer> {
+  private async _encodeJPEG(rawRgba: Buffer, w: number, h: number, quality: number): Promise<Buffer> {
     return sharp(rawRgba, { raw: { width: w, height: h, channels: 4 } })
-      .jpeg({ quality: this._cfg.jpegQuality, mozjpeg: false, chromaSubsampling: "4:2:0" })
+      .jpeg({ quality, mozjpeg: false, chromaSubsampling: "4:2:0" })
       .toBuffer();
   }
 
@@ -371,6 +361,114 @@ export class FrameProcessor {
     const RGBA_RED = 0xFF0000FF; // bytes: FF 00 00 FF
     for (let o = 0; o < raw.length; o += 4) view.setUint32(o, RGBA_RED, true);
     return this._encode(raw, w, h, enc);
+  }
+
+  private async _encodeRectAdaptive(
+    rgba: RGBA,
+    rect: { x: number; y: number; w: number; h: number },
+    enc: Encoding,
+    debugOverlayEnabled: boolean,
+    isFullFrame: boolean
+  ): Promise<Rect[]> {
+    const maxBytesPerTile = this._cfg.maxBytesPerMessage - FRAME_HEADER_BYTES - TILE_HEADER_BYTES;
+    const data = await this._tryEncodeWithinBudget(rgba, rect, enc, debugOverlayEnabled, isFullFrame, maxBytesPerTile);
+    if (data) return [{ ...rect, data }];
+
+    if (this._adaptiveSplitEnabled() && this._canSplitRect(rect)) {
+      const [a, b] = this._splitRect(rect);
+      return [
+        ...await this._encodeRectAdaptive(rgba, a, enc, debugOverlayEnabled, isFullFrame),
+        ...await this._encodeRectAdaptive(rgba, b, enc, debugOverlayEnabled, isFullFrame),
+      ];
+    }
+
+    console.warn(`[frame] encoded tile exceeds message budget after adaptive fallback: x=${rect.x} y=${rect.y} w=${rect.w} h=${rect.h} enc=${enc}`);
+    const redData = await this._makeRedFrameAsync(rect.w, rect.h, enc);
+    return [{ ...rect, data: redData }];
+  }
+
+  private async _tryEncodeWithinBudget(
+    rgba: RGBA,
+    rect: { x: number; y: number; w: number; h: number },
+    enc: Encoding,
+    debugOverlayEnabled: boolean,
+    isFullFrame: boolean,
+    maxBytesPerTile: number
+  ): Promise<Buffer | undefined> {
+    if (maxBytesPerTile <= 0) return undefined;
+
+    const raw = this._extractRaw(rgba, rect.x, rect.y, rect.w, rect.h);
+    if (debugOverlayEnabled) drawTileDebugBorder(raw, rect.w, rect.h, isFullFrame);
+
+    if (enc !== Encoding.JPEG || !this._adaptiveQualityEnabled()) {
+      const data = await this._encode(raw, rect.w, rect.h, enc);
+      return data.length <= maxBytesPerTile ? data : undefined;
+    }
+
+    const startQuality = Math.min(100, Math.max(1, Math.round(this._cfg.jpegQuality)));
+    const minQuality = Math.min(startQuality, this._adaptiveMinJpegQuality());
+    const step = this._adaptiveQualityStep();
+    const tried = new Set<number>();
+    for (let q = startQuality; q >= minQuality; q -= step) {
+      const quality = Math.max(minQuality, Math.min(100, Math.round(q)));
+      if (tried.has(quality)) continue;
+      tried.add(quality);
+
+      const data = await this._encodeJPEG(raw, rect.w, rect.h, quality);
+      if (data.length <= maxBytesPerTile) return data;
+    }
+
+    if (!tried.has(minQuality)) {
+      const data = await this._encodeJPEG(raw, rect.w, rect.h, minQuality);
+      if (data.length <= maxBytesPerTile) return data;
+    }
+
+    return undefined;
+  }
+
+  private _adaptiveQualityEnabled(): boolean {
+    return this._cfg.adaptiveQualityEnabled !== false;
+  }
+
+  private _adaptiveMinJpegQuality(): number {
+    return Math.min(100, Math.max(1, Math.round(this._cfg.adaptiveMinJpegQuality ?? 35)));
+  }
+
+  private _adaptiveQualityStep(): number {
+    return Math.min(100, Math.max(1, Math.round(this._cfg.adaptiveQualityStep ?? 10)));
+  }
+
+  private _adaptiveSplitEnabled(): boolean {
+    return this._cfg.adaptiveSplitEnabled !== false;
+  }
+
+  private _adaptiveSplitMinTileSize(): number {
+    return Math.max(1, Math.round(this._cfg.adaptiveSplitMinTileSize ?? 16));
+  }
+
+  private _canSplitRect(rect: { w: number; h: number }): boolean {
+    const min = this._adaptiveSplitMinTileSize();
+    return rect.w > min || rect.h > min;
+  }
+
+  private _splitRect(rect: { x: number; y: number; w: number; h: number }): [
+    { x: number; y: number; w: number; h: number },
+    { x: number; y: number; w: number; h: number }
+  ] {
+    const splitWidth = rect.w >= rect.h && rect.w > this._adaptiveSplitMinTileSize();
+    if (splitWidth) {
+      const w1 = Math.floor(rect.w / 2);
+      return [
+        { x: rect.x, y: rect.y, w: w1, h: rect.h },
+        { x: rect.x + w1, y: rect.y, w: rect.w - w1, h: rect.h },
+      ];
+    }
+
+    const h1 = Math.floor(rect.h / 2);
+    return [
+      { x: rect.x, y: rect.y, w: rect.w, h: h1 },
+      { x: rect.x, y: rect.y + h1, w: rect.w, h: rect.h - h1 },
+    ];
   }
 
   public updateConfig(cfg: FrameProcessorCfg): void {
