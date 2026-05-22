@@ -76,3 +76,7 @@ On client connection the server logs the effective negotiated configuration:
 ```
 
 Use this log to confirm whether a value came from the ESPHome client or from add-on defaults.
+
+## Changelog
+
+Home Assistant reads add-on release notes from `CHANGELOG.md`. Every server version bump should update `config.yaml`, `package.json`, `package-lock.json`, and `CHANGELOG.md` together.

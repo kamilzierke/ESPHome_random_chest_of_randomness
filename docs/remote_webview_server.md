@@ -15,6 +15,7 @@ This repository uses:
 ```text
 repository.yaml
 remote_webview_server/
+  CHANGELOG.md
   config.yaml
   Dockerfile
   run.sh
@@ -24,6 +25,17 @@ remote_webview_server/
   src/
   self-test/
 ```
+
+## Release Notes
+
+Home Assistant shows add-on/app release notes from `remote_webview_server/CHANGELOG.md`. Every server version bump must update all of these files in the same change:
+
+- `remote_webview_server/config.yaml`
+- `remote_webview_server/package.json`
+- `remote_webview_server/package-lock.json`
+- `remote_webview_server/CHANGELOG.md`
+
+Add the newest changelog entry at the top and keep it focused on user-visible changes, configuration changes and migration notes.
 
 ## Add-on Options
 
