@@ -328,8 +328,9 @@ void RemoteWebView::maybe_log_telemetry_() {
 
   last_telemetry_log_us_ = now_us;
   ESP_LOGI(TAG,
-           "telemetry drops=%u decode_avg=%u ms render_avg=%u ms last_frame=%lu reconnects=%u paused=%s",
+           "telemetry drops=%u unsupported_encoding_drops=%u decode_avg=%u ms render_avg=%u ms last_frame=%lu reconnects=%u paused=%s",
            (unsigned) decode_drop_count_,
+           (unsigned) unsupported_encoding_drops_,
            (unsigned) get_decode_avg_ms(),
            (unsigned) frame_render_avg_ms_,
            (unsigned long) last_frame_id_,
@@ -361,6 +362,7 @@ void RemoteWebView::maybe_publish_diagnostics_() {
   if (last_decode_ms_sensor_) last_decode_ms_sensor_->publish_state((float) last_decode_ms_);
   if (render_avg_ms_sensor_) render_avg_ms_sensor_->publish_state((float) frame_render_avg_ms_);
   if (decode_drops_sensor_) decode_drops_sensor_->publish_state((float) decode_drop_count_);
+  if (unsupported_encoding_drops_sensor_) unsupported_encoding_drops_sensor_->publish_state((float) unsupported_encoding_drops_);
   if (reconnect_count_sensor_) reconnect_count_sensor_->publish_state((float) reconnect_count_);
   if (last_frame_id_sensor_) last_frame_id_sensor_->publish_state((float) last_frame_id_);
   if (bytes_received_sensor_) bytes_received_sensor_->publish_state((float) bytes_received_);
@@ -667,6 +669,9 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
       decode_jpeg_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
     } else if (fi.enc == proto::Encoding::PNG && th.dlen) {
       decode_png_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
+    } else if (th.dlen) {
+      unsupported_encoding_drops_++;
+      ESP_LOGW(TAG, "unsupported frame encoding=%u, dropping tile", (unsigned) fi.enc);
     }
 
     off += th.dlen;
@@ -1072,7 +1077,7 @@ void RemoteWebViewRenderModeSelect::control(size_t index) {
     publish_state(index);
     return;
   }
-  parent_->set_runtime_render_mode((int) index);
+  parent_->set_runtime_render_mode(index == 1 ? 2 : 1);
   publish_state(parent_->get_render_mode_name());
 }
 #endif

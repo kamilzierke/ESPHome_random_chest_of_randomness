@@ -8,8 +8,9 @@ This document collects practical profiles and diagnostics for tuning Remote WebV
 | --- | --- | --- | --- |
 | JPEG | Yes | Yes | Default and recommended mode. |
 | PNG | Yes, via `pngle` | Yes, via `sharp` | Selectable for testing with `render_mode: png` or `RWV Render Mode`. |
-| RAW565 | Planned | Partial helper only | Not selectable yet. |
-| RAW565_RLE | Planned | Planned | Not selectable yet. |
+| Auto | JPEG alias for now | JPEG alias for now | Safe to leave unused until the heuristic exists. |
+| RAW565 | Planned | Helper only; emits JPEG fallback today | Not selectable yet. |
+| RAW565_RLE | Planned | Emits JPEG fallback today | Not selectable yet. |
 | RAW565_LZ4 | Reserved | Reserved | Do not use yet. |
 
 ## Baseline Profiles
@@ -43,6 +44,7 @@ Use `common-rwv-diagnostics.yaml` to expose native ESPHome entities in Home Assi
 | `RWV Decode Avg` | Average JPEG decode time on the ESP | Lower JPEG quality, increase tile size, or increase `min_frame_interval` if this is high. |
 | `RWV Render Avg` | Average packet render time on the ESP | Watch together with decode time; high values can cause visible lag. |
 | `RWV Decode Drops` | Packets dropped before decode | Increase `min_frame_interval`, lower JPEG quality, or enable latest-frame behavior. |
+| `RWV Unsupported Encoding Drops` | Tiles skipped because the client cannot decode the frame encoding | Should stay at `0`; update server/client together if it increments. |
 | `RWV Queue Depth` | Current decode backlog | Should usually stay low; sustained growth means the client cannot keep up. |
 | `RWV Last Frame ID` | Last received frame id | Use to detect whether the stream is advancing. |
 

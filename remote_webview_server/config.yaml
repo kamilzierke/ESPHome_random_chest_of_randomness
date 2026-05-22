@@ -1,5 +1,5 @@
 name: "Remote WebView Server"
-version: "1.1.7"
+version: "1.1.8"
 slug: "remote_webview_server"
 description: "Streams a Home Assistant dashboard or any website to ESP32-based displays as tiled frames over WebSocket."
 url: "https://github.com/kamilzierke/ESPHome_random_chest_of_randomness/tree/main/remote_webview_server"
@@ -48,7 +48,7 @@ schema:
   every_nth_frame: int
   min_frame_interval_ms: int
   jpeg_quality: int
-  render_mode: list(auto|jpeg|png|raw565|raw565_rle)
+  render_mode: list(auto|jpeg|png)
   max_bytes_per_message: int
   ws_port: int
   debug_port: int

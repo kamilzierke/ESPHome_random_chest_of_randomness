@@ -52,7 +52,7 @@ Stream defaults:
 - `render_mode`
 - `max_bytes_per_message`
 
-`render_mode` can be `jpeg`, `png`, `auto`, `raw565`, or `raw565_rle`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning; the RAW modes are still planned on the ESPHome client side.
+`render_mode` in the add-on UI exposes `auto`, `jpeg`, and `png`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning. `auto` currently behaves as a JPEG alias until the auto heuristic exists. Older clients may still request `raw565` or `raw565_rle`; the server accepts those values but sends JPEG frames until the ESPHome client draw paths are implemented.
 
 ## Login Flow
 
@@ -94,6 +94,7 @@ Use them to correlate server logs with client behavior:
 - `frames_received`, `tiles_received`, and `fps` show whether the ESP is receiving new frame data.
 - `decode_avg_ms`, `last_decode_ms`, and `queue_depth` show whether the ESP decode side is the bottleneck.
 - `decode_drops` indicates local queue pressure or an overloaded client.
+- `unsupported_encoding_drops` should stay at `0`. If it increments, the server sent an encoding the current ESPHome client cannot decode.
 
 ## Client Controls
 
@@ -105,7 +106,7 @@ ESPHome can also expose native Home Assistant controls with the `controls:` bloc
 
 Runtime tuning uses `ClientConfig` packets:
 
-- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the production path. `png` is implemented end-to-end for testing. RAW565 modes are still protocol/runtime plumbing for upcoming format work.
+- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the production path. `png` is implemented end-to-end for testing. `auto` currently maps to JPEG. RAW565 modes are accepted for protocol compatibility but encoded as JPEG until upcoming format work adds the client draw path.
 - `JpegQuality` - updates the active JPEG quality for the next encoded frames.
 - `MinFrameInterval` - updates the per-device frame throttle without reconnecting.
 - `TileSize` - updates the server tile grid and requests a keyframe.

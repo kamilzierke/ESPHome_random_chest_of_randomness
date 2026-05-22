@@ -19,6 +19,8 @@ remote_webview:
       name: "RWV Render Avg"
     decode_drops:
       name: "RWV Decode Drops"
+    unsupported_encoding_drops:
+      name: "RWV Unsupported Encoding Drops"
     reconnect_count:
       name: "RWV Reconnect Count"
     last_frame_id:
@@ -56,11 +58,8 @@ remote_webview:
     render_mode_select:
       name: "RWV Render Mode"
       options:
-        - auto
         - jpeg
         - png
-        - raw565
-        - raw565_rle
     jpeg_quality_number:
       name: "RWV JPEG Quality"
       min_value: 20

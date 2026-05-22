@@ -312,10 +312,9 @@ export class FrameProcessor {
     switch (this._cfg.renderMode) {
       case "png":
         return Encoding.PNG;
-      case "raw565":
-        return Encoding.RAW565;
       case "jpeg":
       case "auto":
+      case "raw565":
       case "raw565_rle":
       default:
         return Encoding.JPEG;

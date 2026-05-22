@@ -46,6 +46,7 @@ CONF_DECODE_AVG_MS = "decode_avg_ms"
 CONF_LAST_DECODE_MS = "last_decode_ms"
 CONF_RENDER_AVG_MS = "render_avg_ms"
 CONF_DECODE_DROPS = "decode_drops"
+CONF_UNSUPPORTED_ENCODING_DROPS = "unsupported_encoding_drops"
 CONF_RECONNECT_COUNT = "reconnect_count"
 CONF_LAST_FRAME_ID = "last_frame_id"
 CONF_BYTES_RECEIVED = "bytes_received"
@@ -69,6 +70,7 @@ CONF_MIN_FRAME_INTERVAL_NUMBER = "min_frame_interval_number"
 CONF_TILE_SIZE_NUMBER = "tile_size_number"
 
 RENDER_MODE_OPTIONS = ["auto", "jpeg", "png", "raw565", "raw565_rle"]
+RENDER_MODE_SELECT_OPTIONS = ["jpeg", "png"]
 RENDER_MODE_TO_WIRE = {name: i for i, name in enumerate(RENDER_MODE_OPTIONS)}
 
 _SERVER_RE = re.compile(
@@ -120,6 +122,7 @@ SENSOR_SETTERS = {
     CONF_LAST_DECODE_MS: "set_last_decode_ms_sensor",
     CONF_RENDER_AVG_MS: "set_render_avg_ms_sensor",
     CONF_DECODE_DROPS: "set_decode_drops_sensor",
+    CONF_UNSUPPORTED_ENCODING_DROPS: "set_unsupported_encoding_drops_sensor",
     CONF_RECONNECT_COUNT: "set_reconnect_count_sensor",
     CONF_LAST_FRAME_ID: "set_last_frame_id_sensor",
     CONF_BYTES_RECEIVED: "set_bytes_received_sensor",
@@ -196,10 +199,10 @@ def render_mode(value):
 
 def render_mode_options(value):
     options = cv.ensure_list(render_mode)(value)
-    if options != RENDER_MODE_OPTIONS:
+    if options != RENDER_MODE_SELECT_OPTIONS:
         raise cv.Invalid(
-            "render_mode_select options must stay in protocol order: "
-            + ", ".join(RENDER_MODE_OPTIONS)
+            "render_mode_select only exposes decodable runtime modes for now: "
+            + ", ".join(RENDER_MODE_SELECT_OPTIONS)
         )
     return options
 
@@ -245,6 +248,7 @@ CONFIG_SCHEMA = cv.Schema(
                 cv.Optional(CONF_LAST_DECODE_MS): DIAGNOSTIC_MS_SCHEMA,
                 cv.Optional(CONF_RENDER_AVG_MS): DIAGNOSTIC_MS_SCHEMA,
                 cv.Optional(CONF_DECODE_DROPS): DIAGNOSTIC_COUNT_SCHEMA,
+                cv.Optional(CONF_UNSUPPORTED_ENCODING_DROPS): DIAGNOSTIC_COUNT_SCHEMA,
                 cv.Optional(CONF_RECONNECT_COUNT): DIAGNOSTIC_COUNT_SCHEMA,
                 cv.Optional(CONF_LAST_FRAME_ID): DIAGNOSTIC_COUNT_SCHEMA,
                 cv.Optional(CONF_BYTES_RECEIVED): sensor.sensor_schema(
@@ -303,7 +307,7 @@ CONFIG_SCHEMA = cv.Schema(
                     entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 ).extend(
                     {
-                        cv.Optional(CONF_OPTIONS, default=RENDER_MODE_OPTIONS): render_mode_options,
+                        cv.Optional(CONF_OPTIONS, default=RENDER_MODE_SELECT_OPTIONS): render_mode_options,
                     }
                 ),
                 cv.Optional(CONF_JPEG_QUALITY_NUMBER): runtime_number_schema(

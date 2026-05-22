@@ -74,6 +74,7 @@ class RemoteWebView : public Component {
   void set_last_decode_ms_sensor(sensor::Sensor *s) { last_decode_ms_sensor_ = s; }
   void set_render_avg_ms_sensor(sensor::Sensor *s) { render_avg_ms_sensor_ = s; }
   void set_decode_drops_sensor(sensor::Sensor *s) { decode_drops_sensor_ = s; }
+  void set_unsupported_encoding_drops_sensor(sensor::Sensor *s) { unsupported_encoding_drops_sensor_ = s; }
   void set_reconnect_count_sensor(sensor::Sensor *s) { reconnect_count_sensor_ = s; }
   void set_last_frame_id_sensor(sensor::Sensor *s) { last_frame_id_sensor_ = s; }
   void set_bytes_received_sensor(sensor::Sensor *s) { bytes_received_sensor_ = s; }
@@ -219,12 +220,14 @@ class RemoteWebView : public Component {
   uint32_t bytes_received_{0};
   uint32_t frames_received_{0};
   uint32_t tiles_received_{0};
+  uint32_t unsupported_encoding_drops_{0};
 
 #ifdef USE_SENSOR
   sensor::Sensor *decode_avg_ms_sensor_{nullptr};
   sensor::Sensor *last_decode_ms_sensor_{nullptr};
   sensor::Sensor *render_avg_ms_sensor_{nullptr};
   sensor::Sensor *decode_drops_sensor_{nullptr};
+  sensor::Sensor *unsupported_encoding_drops_sensor_{nullptr};
   sensor::Sensor *reconnect_count_sensor_{nullptr};
   sensor::Sensor *last_frame_id_sensor_{nullptr};
   sensor::Sensor *bytes_received_sensor_{nullptr};

@@ -42,6 +42,8 @@ remote_webview:
       name: "RWV Render Avg"
     decode_drops:
       name: "RWV Decode Drops"
+    unsupported_encoding_drops:
+      name: "RWV Unsupported Encoding Drops"
     reconnect_count:
       name: "RWV Reconnect Count"
     last_frame_id:
@@ -78,7 +80,7 @@ remote_webview:
       name: "RWV Debug Overlay"
     render_mode_select:
       name: "RWV Render Mode"
-      options: [auto, jpeg, png, raw565, raw565_rle]
+      options: [jpeg, png]
     jpeg_quality_number:
       name: "RWV JPEG Quality"
       min_value: 20
@@ -112,7 +114,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 | --- | --- | --- |
 | JPEG | Implemented | Current production path. The server encodes all frame rects as JPEG and the ESPHome client decodes them with `JPEGDEC`. |
 | PNG | Implemented, experimental | Select with `render_mode: png` or the `RWV Render Mode` entity. The server encodes PNG rects with `sharp`; the ESPHome client decodes with `pngle`. Test on real hardware before treating it as the default mode. |
-| RAW565 | Planned | Server has a low-level RAW565 encoder helper, but render-mode selection and the ESPHome draw fast path are not wired yet. |
+| RAW565 | Planned | Server has a low-level RAW565 encoder helper, but the server falls back to JPEG for this requested mode until the ESPHome draw fast path is wired. |
 | RAW565_RLE | Planned | Protocol enum exists; encoder/decoder and runtime selection are still pending. |
 | RAW565_LZ4 | Reserved | Protocol enum exists as an experimental future option. It needs RAM and dependency review before implementation. |
 
@@ -131,7 +133,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `every_nth_frame` - server-side Chromium screencast sampling.
 - `min_frame_interval` - server-side minimum frame processing interval in milliseconds.
 - `jpeg_quality` - server-side JPEG quality.
-- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `raw565` and `raw565_rle` remain planned.
+- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `auto` currently behaves as a JPEG alias. `raw565` and `raw565_rle` remain accepted for backward compatibility, but the server falls back to JPEG until those client draw paths exist.
 - `max_bytes_per_msg` - both client receive limit and server-side packet chunking hint.
 - `big_endian` - local RGB565 byte order for drawing decoded pixels.
 - `rotation` - sent to the server as `r`; affects rendered image rotation and touch mapping.
@@ -139,7 +141,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `stream_control_enabled` - enables pause/resume/keyframe commands from ESP to server.
 - `touch_wake_passthrough` - when paused, first touch resumes stream and is forwarded if true; if false, the component drops touch events while paused.
 - `telemetry_log_interval_ms` - local telemetry log interval.
-- `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior.
+- `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior. `unsupported_encoding_drops` increments when a server sends a frame encoding the client cannot decode.
 - `binary_sensors` - optional ESPHome native state entities for connection, stream pause and touch enable state.
 - `controls` - optional ESPHome native controls for pause, touch enable, keyframe request, reconnect, debug overlay and runtime tuning.
 
@@ -162,7 +164,7 @@ The optional `controls:` block exposes the same runtime hooks as Home Assistant 
 - `request_keyframe_button` - calls `request_full_frame()`. It requires `stream_control_enabled: true`, because it is a server-side request.
 - `reconnect_button` - restarts the ESP WebSocket client connection.
 - `debug_overlay_switch` - stores local debug overlay state, publishes it as an entity, and sends `ClientControl SetDebugOverlay` when `stream_control_enabled: true`. The server stores this state, requests a keyframe, and draws diagnostic borders on transmitted rects. Full-frame rects are blue; partial rects are amber. Heatmaps and touch markers are later diagnostics stages.
-- `render_mode_select` - sends `ClientConfig RenderMode` when `stream_control_enabled: true`. The server updates the device session without reconnect and requests a keyframe. `jpeg` and experimental `png` are currently drawable by the ESPHome client.
+- `render_mode_select` - sends `ClientConfig RenderMode` when `stream_control_enabled: true`. The server updates the device session without reconnect and requests a keyframe. The default select intentionally exposes only `jpeg` and experimental `png`, because they are the currently drawable modes.
 - `jpeg_quality_number` - sends `ClientConfig JpegQuality` and affects subsequent JPEG frames without reconnect.
 - `min_frame_interval_number` - sends `ClientConfig MinFrameInterval` and updates the server-side frame throttle without reconnect.
 - `tile_size_number` - sends `ClientConfig TileSize`, rebuilds the server tile grid and requests a keyframe without reconnect.
