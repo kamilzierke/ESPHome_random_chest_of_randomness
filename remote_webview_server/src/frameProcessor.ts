@@ -108,7 +108,10 @@ export class FrameProcessor {
     encoding: Encoding,
     debugOverlayEnabled: boolean
   ): Promise<FrameOut> {
-    const rectsForFull = this._splitWholeFrame(rgba.width, rgba.height, this._cfg.fullframeTileCount);
+    const fullFrameTileCount = encoding === Encoding.RAW565
+      ? this._raw565FullFrameTileCount(rgba.width, rgba.height)
+      : this._cfg.fullframeTileCount;
+    const rectsForFull = this._splitWholeFrame(rgba.width, rgba.height, fullFrameTileCount);
     const rects: Rect[] = [];
 
     for (const r of rectsForFull) {
@@ -184,6 +187,20 @@ export class FrameProcessor {
       yAcc += heights[r];
     }
     return rects;
+  }
+
+  private _raw565FullFrameTileCount(w: number, h: number): number {
+    const maxBytesPerTile = this._cfg.maxBytesPerMessage - FRAME_HEADER_BYTES - TILE_HEADER_BYTES;
+    if (maxBytesPerTile < 2) return this._cfg.fullframeTileCount;
+
+    let n = Math.max(1, this._cfg.fullframeTileCount);
+    const maxParts = Math.max(1, w * h);
+    while (n < maxParts) {
+      const rects = this._splitWholeFrame(w, h, n);
+      if (rects.every((r) => r.w * r.h * 2 <= maxBytesPerTile)) return n;
+      n++;
+    }
+    return n;
   }
 
   private _getMaxFullTileSize(frameW: number, frameH: number): { maxW: number; maxH: number } {
@@ -312,9 +329,10 @@ export class FrameProcessor {
     switch (this._cfg.renderMode) {
       case "png":
         return Encoding.PNG;
+      case "raw565":
+        return Encoding.RAW565;
       case "jpeg":
       case "auto":
-      case "raw565":
       case "raw565_rle":
       default:
         return Encoding.JPEG;

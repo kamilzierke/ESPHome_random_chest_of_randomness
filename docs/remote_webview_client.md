@@ -80,7 +80,7 @@ remote_webview:
       name: "RWV Debug Overlay"
     render_mode_select:
       name: "RWV Render Mode"
-      options: [jpeg, png]
+      options: [jpeg, png, raw565]
     jpeg_quality_number:
       name: "RWV JPEG Quality"
       min_value: 20
@@ -114,7 +114,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 | --- | --- | --- |
 | JPEG | Implemented | Current production path. The server encodes all frame rects as JPEG and the ESPHome client decodes them with `JPEGDEC`. |
 | PNG | Implemented, experimental | Select with `render_mode: png` or the `RWV Render Mode` entity. The server encodes PNG rects with `sharp`; the ESPHome client decodes with `pngle`. Test on real hardware before treating it as the default mode. |
-| RAW565 | Planned | Server has a low-level RAW565 encoder helper, but the server falls back to JPEG for this requested mode until the ESPHome draw fast path is wired. |
+| RAW565 | Implemented, experimental | Select with `render_mode: raw565` or the `RWV Render Mode` entity. The server sends little-endian RGB565 tile payloads and the ESPHome client draws them directly without JPEG/PNG decoding. Useful for latency testing; bandwidth can be much higher than JPEG. |
 | RAW565_RLE | Planned | Protocol enum exists; encoder/decoder and runtime selection are still pending. |
 | RAW565_LZ4 | Reserved | Protocol enum exists as an experimental future option. It needs RAM and dependency review before implementation. |
 
@@ -133,7 +133,7 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `every_nth_frame` - server-side Chromium screencast sampling.
 - `min_frame_interval` - server-side minimum frame processing interval in milliseconds.
 - `jpeg_quality` - server-side JPEG quality.
-- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `auto` currently behaves as a JPEG alias. `raw565` and `raw565_rle` remain accepted for backward compatibility, but the server falls back to JPEG until those client draw paths exist.
+- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `raw565` is implemented as an experimental direct RGB565 path. `auto` currently behaves as a JPEG alias. `raw565_rle` remains accepted for backward compatibility, but the server falls back to JPEG until that client draw path exists.
 - `max_bytes_per_msg` - both client receive limit and server-side packet chunking hint.
 - `big_endian` - local RGB565 byte order for drawing decoded pixels.
 - `rotation` - sent to the server as `r`; affects rendered image rotation and touch mapping.
@@ -164,7 +164,7 @@ The optional `controls:` block exposes the same runtime hooks as Home Assistant 
 - `request_keyframe_button` - calls `request_full_frame()`. It requires `stream_control_enabled: true`, because it is a server-side request.
 - `reconnect_button` - restarts the ESP WebSocket client connection.
 - `debug_overlay_switch` - stores local debug overlay state, publishes it as an entity, and sends `ClientControl SetDebugOverlay` when `stream_control_enabled: true`. The server stores this state, requests a keyframe, and draws diagnostic borders on transmitted rects. Full-frame rects are blue; partial rects are amber. Heatmaps and touch markers are later diagnostics stages.
-- `render_mode_select` - sends `ClientConfig RenderMode` when `stream_control_enabled: true`. The server updates the device session without reconnect and requests a keyframe. The default select intentionally exposes only `jpeg` and experimental `png`, because they are the currently drawable modes.
+- `render_mode_select` - sends `ClientConfig RenderMode` when `stream_control_enabled: true`. The server updates the device session without reconnect and requests a keyframe. The default select exposes the currently drawable modes: `jpeg`, experimental `png`, and experimental `raw565`.
 - `jpeg_quality_number` - sends `ClientConfig JpegQuality` and affects subsequent JPEG frames without reconnect.
 - `min_frame_interval_number` - sends `ClientConfig MinFrameInterval` and updates the server-side frame throttle without reconnect.
 - `tile_size_number` - sends `ClientConfig TileSize`, rebuilds the server tile grid and requests a keyframe without reconnect.

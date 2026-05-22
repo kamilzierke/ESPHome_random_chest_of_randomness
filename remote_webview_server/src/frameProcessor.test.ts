@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Encoding } from "./protocol.js";
-import { FrameProcessor, drawTileDebugBorder } from "./frameProcessor.js";
+import { Encoding, FRAME_HEADER_BYTES, TILE_HEADER_BYTES } from "./protocol.js";
+import { FrameProcessor, FrameProcessorCfg, drawTileDebugBorder } from "./frameProcessor.js";
 
 function rgbaAt(buf: Buffer, width: number, x: number, y: number): number[] {
   const off = (y * width + x) * 4;
@@ -33,8 +33,8 @@ describe("drawTileDebugBorder", () => {
   });
 });
 
-describe("FrameProcessor PNG mode", () => {
-  function makeProcessor(renderMode: string) {
+describe("FrameProcessor render modes", () => {
+  function makeProcessor(renderMode: string, overrides: Partial<FrameProcessorCfg> = {}) {
     const processor = new FrameProcessor({
       tileSize: 4,
       fullframeTileCount: 1,
@@ -43,20 +43,21 @@ describe("FrameProcessor PNG mode", () => {
       fullFrameEvery: 100,
       maxBytesPerMessage: 61440,
       renderMode,
+      ...overrides,
     });
     processor.requestFullFrame();
     return processor;
   }
 
-  function makeSolidFrame() {
-    const rgba = Buffer.alloc(4 * 4 * 4, 0);
+  function makeSolidFrame(width = 4, height = 4) {
+    const rgba = Buffer.alloc(width * height * 4, 0);
     for (let i = 0; i < rgba.length; i += 4) {
       rgba[i] = 0x20;
       rgba[i + 1] = 0x80;
       rgba[i + 2] = 0xc0;
       rgba[i + 3] = 0xff;
     }
-    return { data: rgba, width: 4, height: 4 };
+    return { data: rgba, width, height };
   }
 
   it("encodes frame rects as PNG when renderMode is png", async () => {
@@ -75,7 +76,29 @@ describe("FrameProcessor PNG mode", () => {
     expect(out.rects[0].data.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
   });
 
-  it.each(["auto", "raw565", "raw565_rle"])(
+  it("encodes frame rects as little-endian RAW565 when renderMode is raw565", async () => {
+    const out = await makeProcessor("raw565").processFrameAsync(makeSolidFrame());
+
+    expect(out.encoding).toBe(Encoding.RAW565);
+    expect(out.rects).toHaveLength(1);
+    expect(out.rects[0].data).toHaveLength(4 * 4 * 2);
+    expect(out.rects[0].data.subarray(0, 2)).toEqual(Buffer.from([0x18, 0x24]));
+  });
+
+  it("splits RAW565 full frames so each rect fits the packet payload budget", async () => {
+    const maxPayloadBytes = 16;
+    const out = await makeProcessor("raw565", {
+      fullframeTileCount: 1,
+      maxBytesPerMessage: FRAME_HEADER_BYTES + TILE_HEADER_BYTES + maxPayloadBytes,
+    }).processFrameAsync(makeSolidFrame(8, 8));
+
+    expect(out.encoding).toBe(Encoding.RAW565);
+    expect(out.rects.length).toBeGreaterThan(1);
+    expect(out.rects.every((r) => r.data.length <= maxPayloadBytes)).toBe(true);
+    expect(out.rects.reduce((sum, r) => sum + r.data.length, 0)).toBe(8 * 8 * 2);
+  });
+
+  it.each(["auto", "raw565_rle"])(
     "falls back to JPEG for unsupported renderMode=%s so clients do not receive undecodable packets",
     async (renderMode) => {
       const out = await makeProcessor(renderMode).processFrameAsync(makeSolidFrame());

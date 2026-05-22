@@ -70,7 +70,7 @@ CONF_MIN_FRAME_INTERVAL_NUMBER = "min_frame_interval_number"
 CONF_TILE_SIZE_NUMBER = "tile_size_number"
 
 RENDER_MODE_OPTIONS = ["auto", "jpeg", "png", "raw565", "raw565_rle"]
-RENDER_MODE_SELECT_OPTIONS = ["jpeg", "png"]
+RENDER_MODE_SELECT_OPTIONS = ["jpeg", "png", "raw565"]
 RENDER_MODE_TO_WIRE = {name: i for i, name in enumerate(RENDER_MODE_OPTIONS)}
 
 _SERVER_RE = re.compile(

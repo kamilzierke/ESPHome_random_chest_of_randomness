@@ -60,6 +60,7 @@ remote_webview:
       options:
         - jpeg
         - png
+        - raw565
     jpeg_quality_number:
       name: "RWV JPEG Quality"
       min_value: 20

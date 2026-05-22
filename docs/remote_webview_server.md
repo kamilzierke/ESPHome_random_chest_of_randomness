@@ -52,7 +52,7 @@ Stream defaults:
 - `render_mode`
 - `max_bytes_per_message`
 
-`render_mode` in the add-on UI exposes `auto`, `jpeg`, and `png`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning. `auto` currently behaves as a JPEG alias until the auto heuristic exists. Older clients may still request `raw565` or `raw565_rle`; the server accepts those values but sends JPEG frames until the ESPHome client draw paths are implemented.
+`render_mode` in the add-on UI exposes `auto`, `jpeg`, `png`, and `raw565`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning. `raw565` is an experimental direct RGB565 path intended for latency tests. `auto` currently behaves as a JPEG alias until the auto heuristic exists. Older clients may still request `raw565_rle`; the server accepts that value but sends JPEG frames until the ESPHome client draw path is implemented.
 
 ## Login Flow
 
@@ -106,7 +106,7 @@ ESPHome can also expose native Home Assistant controls with the `controls:` bloc
 
 Runtime tuning uses `ClientConfig` packets:
 
-- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the production path. `png` is implemented end-to-end for testing. `auto` currently maps to JPEG. RAW565 modes are accepted for protocol compatibility but encoded as JPEG until upcoming format work adds the client draw path.
+- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the production path. `png` is implemented end-to-end for testing. `raw565` is implemented end-to-end as an experimental direct RGB565 path. `auto` currently maps to JPEG. `raw565_rle` is accepted for protocol compatibility but encoded as JPEG until upcoming format work adds the client draw path.
 - `JpegQuality` - updates the active JPEG quality for the next encoded frames.
 - `MinFrameInterval` - updates the per-device frame throttle without reconnecting.
 - `TileSize` - updates the server tile grid and requests a keyframe.

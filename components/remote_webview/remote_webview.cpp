@@ -669,6 +669,10 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
       decode_jpeg_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
     } else if (fi.enc == proto::Encoding::PNG && th.dlen) {
       decode_png_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
+    } else if (fi.enc == proto::Encoding::RAW565 && th.dlen) {
+      if (!draw_raw565_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, th.w, th.h, data + off, th.dlen)) {
+        decode_drop_count_++;
+      }
     } else if (th.dlen) {
       unsupported_encoding_drops_++;
       ESP_LOGW(TAG, "unsupported frame encoding=%u, dropping tile", (unsigned) fi.enc);
@@ -832,6 +836,39 @@ bool RemoteWebView::decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const 
   }
 
   free(pngle);
+  return true;
+}
+
+bool RemoteWebView::draw_raw565_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t w, uint16_t h, const uint8_t *data,
+                                             size_t len) {
+  if (!data || w == 0 || h == 0) return false;
+
+  const size_t expected = (size_t) w * (size_t) h * 2u;
+  if (len != expected) {
+    ESP_LOGW(TAG, "raw565 tile length mismatch: got=%u expected=%u", (unsigned) len, (unsigned) expected);
+    return false;
+  }
+
+  if (dst_x < 0 || dst_y < 0 || dst_x >= display_width_ || dst_y >= display_height_) return false;
+
+  int draw_w = w;
+  int draw_h = h;
+  if (dst_x + draw_w > display_width_) draw_w = display_width_ - dst_x;
+  if (dst_y + draw_h > display_height_) draw_h = display_height_ - dst_y;
+  if (draw_w <= 0 || draw_h <= 0) return false;
+
+  // RAW565 wire data is little-endian RGB565. Let display drivers convert from that source order.
+  if (draw_w == (int) w) {
+    display_->draw_pixels_at(dst_x, dst_y, draw_w, draw_h, data, esphome::display::COLOR_ORDER_RGB,
+                             esphome::display::COLOR_BITNESS_565, false);
+    return true;
+  }
+
+  const size_t row_stride = (size_t) w * 2u;
+  for (int row = 0; row < draw_h; row++) {
+    display_->draw_pixels_at(dst_x, dst_y + row, draw_w, 1, data + ((size_t) row * row_stride),
+                             esphome::display::COLOR_ORDER_RGB, esphome::display::COLOR_BITNESS_565, false);
+  }
   return true;
 }
 
@@ -1077,7 +1114,7 @@ void RemoteWebViewRenderModeSelect::control(size_t index) {
     publish_state(index);
     return;
   }
-  parent_->set_runtime_render_mode(index == 1 ? 2 : 1);
+  parent_->set_runtime_render_mode(index == 2 ? 3 : (index == 1 ? 2 : 1));
   publish_state(parent_->get_render_mode_name());
 }
 #endif

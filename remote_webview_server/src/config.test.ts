@@ -19,6 +19,10 @@ describe("render mode config", () => {
     expect(makeConfigFromParams(makeParams("jpeg")).renderMode).toBe("jpeg");
   });
 
+  it("parses rm=raw565 as RAW565 render mode", () => {
+    expect(makeConfigFromParams(makeParams("raw565")).renderMode).toBe("raw565");
+  });
+
   it("rejects unknown render modes at config parsing", () => {
     expect(() => makeConfigFromParams(makeParams("avif"))).toThrow(/invalid render mode/);
   });
