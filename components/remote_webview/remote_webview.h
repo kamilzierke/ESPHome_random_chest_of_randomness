@@ -21,6 +21,7 @@
 #include "esphome/components/select/select.h"
 #endif
 #include "JPEGDEC.h"
+#include <pngle.h>
 #include "protocol.h"
 #include "remote_webview_config.h"
 
@@ -275,10 +276,14 @@ class RemoteWebView : public Component {
   void process_frame_stats_packet_(const uint8_t *data, size_t len);
   bool decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
   bool decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
+  bool decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
 
   static int jpeg_draw_cb_s_(JPEGDRAW *p);
   int jpeg_draw_cb_(JPEGDRAW *p);
   JPEGDEC jd_;
+  static void png_init_cb_s_(pngle_t *pngle, uint32_t w, uint32_t h);
+  static void png_draw_cb_s_(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                             const uint8_t rgba[4]);
 
   bool ws_send_touch_event_(proto::TouchType type, int x, int y, uint8_t pid);
   bool ws_send_keepalive_();

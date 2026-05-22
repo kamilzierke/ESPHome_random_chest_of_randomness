@@ -19,6 +19,12 @@ namespace remote_webview {
 static const char *const TAG = "Remote_WebView";
 RemoteWebView *RemoteWebView::self_ = nullptr;
 
+struct PngDrawContext {
+  RemoteWebView *self{nullptr};
+  int16_t dst_x{0};
+  int16_t dst_y{0};
+};
+
 static inline void websocket_force_reconnect(esp_websocket_client_handle_t client) {
   if (!client) return;
   esp_websocket_client_stop(client);
@@ -659,6 +665,8 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
 
     if (fi.enc == proto::Encoding::JPEG && th.dlen) {
       decode_jpeg_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
+    } else if (fi.enc == proto::Encoding::PNG && th.dlen) {
+      decode_png_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
     }
 
     off += th.dlen;
@@ -787,6 +795,65 @@ int RemoteWebView::jpeg_draw_cb_(JPEGDRAW *p) {
   );
 
   return 1;
+}
+
+bool RemoteWebView::decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len) {
+  if (!data || !len) return false;
+
+  auto *pngle = (pngle_t *) heap_caps_malloc(PNGLE_T_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!pngle) pngle = (pngle_t *) heap_caps_malloc(PNGLE_T_SIZE, MALLOC_CAP_8BIT);
+  if (!pngle) {
+    ESP_LOGE(TAG, "png decoder allocation failed (%u bytes)", (unsigned) PNGLE_T_SIZE);
+    return false;
+  }
+
+  memset(pngle, 0, PNGLE_T_SIZE);
+  pngle_reset(pngle);
+
+  PngDrawContext ctx;
+  ctx.self = this;
+  ctx.dst_x = dst_x;
+  ctx.dst_y = dst_y;
+
+  pngle_set_user_data(pngle, &ctx);
+  pngle_set_init_callback(pngle, &RemoteWebView::png_init_cb_s_);
+  pngle_set_draw_callback(pngle, &RemoteWebView::png_draw_cb_s_);
+
+  const int fed = pngle_feed(pngle, data, len);
+  if (fed < 0) {
+    ESP_LOGE(TAG, "png decode failed: %s", pngle_error(pngle));
+    free(pngle);
+    return false;
+  }
+
+  free(pngle);
+  return true;
+}
+
+void RemoteWebView::png_init_cb_s_(pngle_t *pngle, uint32_t w, uint32_t h) {
+  (void) pngle;
+  (void) w;
+  (void) h;
+}
+
+void RemoteWebView::png_draw_cb_s_(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                                   const uint8_t rgba[4]) {
+  if (!pngle || !rgba) return;
+  auto *ctx = reinterpret_cast<PngDrawContext *>(pngle_get_user_data(pngle));
+  if (!ctx || !ctx->self) return;
+  RemoteWebView *self = ctx->self;
+
+  int32_t dx = ctx->dst_x + (int32_t) x;
+  int32_t dy = ctx->dst_y + (int32_t) y;
+  int32_t dw = (int32_t) w;
+  int32_t dh = (int32_t) h;
+
+  if (dx >= self->display_width_ || dy >= self->display_height_) return;
+  if (dx + dw > self->display_width_) dw = self->display_width_ - dx;
+  if (dy + dh > self->display_height_) dh = self->display_height_ - dy;
+  if (dw <= 0 || dh <= 0) return;
+
+  self->display_->filled_rectangle(dx, dy, dw, dh, Color(rgba[0], rgba[1], rgba[2], rgba[3]));
 }
 
 bool RemoteWebView::ws_send_touch_event_(proto::TouchType type, int x, int y, uint8_t pid) {

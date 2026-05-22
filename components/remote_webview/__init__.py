@@ -332,6 +332,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 async def to_code(config):
     cg.add_library("JPEGDEC", "1.8.4", "https://github.com/bitbank2/JPEGDEC#1.8.4")
+    cg.add_library("pngle", "1.1.0")
     add_idf_component(name="espressif/esp_websocket_client", ref="1.5.0")
     add_idf_component(name="espressif/esp-dsp", ref="1.7.1")
 

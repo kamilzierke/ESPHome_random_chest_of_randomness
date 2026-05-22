@@ -52,6 +52,8 @@ Stream defaults:
 - `render_mode`
 - `max_bytes_per_message`
 
+`render_mode` can be `jpeg`, `png`, `auto`, `raw565`, or `raw565_rle`. `jpeg` is the production default. `png` is implemented for testing and runtime tuning; the RAW modes are still planned on the ESPHome client side.
+
 ## Login Flow
 
 1. Enable:
@@ -103,7 +105,7 @@ ESPHome can also expose native Home Assistant controls with the `controls:` bloc
 
 Runtime tuning uses `ClientConfig` packets:
 
-- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the only fully implemented image path today; PNG/RAW565 modes are protocol/runtime plumbing for upcoming format work.
+- `RenderMode` - updates the requested render mode and requests a keyframe. `jpeg` is the production path. `png` is implemented end-to-end for testing. RAW565 modes are still protocol/runtime plumbing for upcoming format work.
 - `JpegQuality` - updates the active JPEG quality for the next encoded frames.
 - `MinFrameInterval` - updates the per-device frame throttle without reconnecting.
 - `TileSize` - updates the server tile grid and requests a keyframe.

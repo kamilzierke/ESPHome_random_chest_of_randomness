@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawTileDebugBorder } from "./frameProcessor.js";
+import { Encoding } from "./protocol.js";
+import { FrameProcessor, drawTileDebugBorder } from "./frameProcessor.js";
 
 function rgbaAt(buf: Buffer, width: number, x: number, y: number): number[] {
   const off = (y * width + x) * 4;
@@ -29,5 +30,34 @@ describe("drawTileDebugBorder", () => {
     expect(rgbaAt(raw, width, 0, 0)).toEqual([255, 180, 0, 255]);
     expect(rgbaAt(raw, width, 2, 2)).toEqual([255, 180, 0, 255]);
     expect(rgbaAt(raw, width, 1, 1)).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("FrameProcessor PNG mode", () => {
+  it("encodes frame rects as PNG when renderMode is png", async () => {
+    const processor = new FrameProcessor({
+      tileSize: 4,
+      fullframeTileCount: 1,
+      fullframeAreaThreshold: 0.9,
+      jpegQuality: 75,
+      fullFrameEvery: 100,
+      maxBytesPerMessage: 61440,
+      renderMode: "png",
+    });
+    processor.requestFullFrame();
+
+    const rgba = Buffer.alloc(4 * 4 * 4, 0);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 0x20;
+      rgba[i + 1] = 0x80;
+      rgba[i + 2] = 0xc0;
+      rgba[i + 3] = 0xff;
+    }
+
+    const out = await processor.processFrameAsync({ data: rgba, width: 4, height: 4 });
+
+    expect(out.encoding).toBe(Encoding.PNG);
+    expect(out.rects).toHaveLength(1);
+    expect(out.rects[0].data.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   });
 });

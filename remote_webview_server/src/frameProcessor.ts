@@ -54,7 +54,7 @@ export class FrameProcessor {
       forceFull = true;
       this._fullFrameRequested = false;
     }
-    const chosenEncoding: Encoding = Encoding.JPEG;
+    const chosenEncoding = this._chooseEncoding();
 
     type TileInfo = { x: number; y: number; w: number; h: number; idx: number; h32: number; changed: boolean };
     const tiles: TileInfo[] = [];
@@ -297,6 +297,8 @@ export class FrameProcessor {
 
   private async _encode(rawRgba: Buffer, w: number, h: number, enc: Encoding): Promise<Buffer> {
     switch (enc) {
+      case Encoding.PNG:
+        return this._encodePNG(rawRgba, w, h);
       case Encoding.JPEG:
         return this._encodeJPEG(rawRgba, w, h);
       case Encoding.RAW565:
@@ -306,9 +308,29 @@ export class FrameProcessor {
     }
   }
 
+  private _chooseEncoding(): Encoding {
+    switch (this._cfg.renderMode) {
+      case "png":
+        return Encoding.PNG;
+      case "raw565":
+        return Encoding.RAW565;
+      case "jpeg":
+      case "auto":
+      case "raw565_rle":
+      default:
+        return Encoding.JPEG;
+    }
+  }
+
   private async _encodeJPEG(rawRgba: Buffer, w: number, h: number): Promise<Buffer> {
     return sharp(rawRgba, { raw: { width: w, height: h, channels: 4 } })
       .jpeg({ quality: this._cfg.jpegQuality, mozjpeg: false, chromaSubsampling: "4:2:0" })
+      .toBuffer();
+  }
+
+  private async _encodePNG(rawRgba: Buffer, w: number, h: number): Promise<Buffer> {
+    return sharp(rawRgba, { raw: { width: w, height: h, channels: 4 } })
+      .png({ compressionLevel: 3, adaptiveFiltering: false })
       .toBuffer();
   }
 
