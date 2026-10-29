@@ -61,6 +61,7 @@ export class InputRouter {
       dev.selfTestRunner.stop();
 
       if (dev.url !== pkt.url) {
+        dev.frameStream?.invalidate();
         const result = await dev.cdp.send("Page.navigate", { url: pkt.url });
         dev.url = pkt.url;
         if (result?.errorText) {

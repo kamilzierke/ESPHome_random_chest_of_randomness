@@ -6,6 +6,7 @@ import { FrameProcessor } from "./frameProcessor.js";
 import { DeviceBroadcaster } from "./broadcaster.js";
 import { hash32 } from "./util.js";
 import { SelfTestRunner } from "./selfTest.js";
+import { LatestFrameStream } from "./frameStream.js";
 
 export type DeviceSession = {
   id: string;
@@ -21,15 +22,13 @@ export type DeviceSession = {
   streamPaused: boolean;
   debugOverlayEnabled: boolean;
 
-  // trailing throttle state
-  pendingB64?: string;
-  throttleTimer?: NodeJS.Timeout;
-  lastProcessedMs?: number;
+  frameStream?: LatestFrameStream;
 };
 
 const PREFERS_REDUCED_MOTION = /^(1|true|yes|on)$/i.test(process.env.PREFERS_REDUCED_MOTION ?? "");
 
 const devices = new Map<string, DeviceSession>();
+const setups = new Map<string, Promise<DeviceSession>>();
 let _cleanupRunning = false;
 export const broadcaster = new DeviceBroadcaster();
 
@@ -39,7 +38,7 @@ export function setDeviceStreamPaused(dev: DeviceSession, paused: boolean): void
 
   dev.streamPaused = paused;
   dev.lastActive = Date.now();
-  dev.pendingB64 = undefined;
+  dev.frameStream?.setPaused(paused);
   broadcaster.clearQueue(dev.deviceId);
 
   if (!paused) {
@@ -51,7 +50,7 @@ export function setDeviceStreamPaused(dev: DeviceSession, paused: boolean): void
 
 export function requestDeviceKeyframe(dev: DeviceSession): void {
   dev.lastActive = Date.now();
-  dev.pendingB64 = undefined;
+  dev.frameStream?.requestFullFrame();
   dev.processor.requestFullFrame();
   broadcaster.clearQueue(dev.deviceId);
   console.log(`[device] ${dev.deviceId} keyframe requested`);
@@ -63,7 +62,7 @@ export function setDeviceDebugOverlay(dev: DeviceSession, enabled: boolean): voi
 
   dev.debugOverlayEnabled = enabled;
   dev.lastActive = Date.now();
-  dev.pendingB64 = undefined;
+  dev.frameStream?.requestFullFrame();
   dev.processor.requestFullFrame();
   broadcaster.clearQueue(dev.deviceId);
   console.log(`[device] ${dev.deviceId} debug overlay ${enabled ? "enabled" : "disabled"}`);
@@ -109,7 +108,7 @@ export function updateDeviceRuntimeConfig(dev: DeviceSession, patch: RuntimeConf
 
   dev.cfg = nextCfg;
   dev.lastActive = Date.now();
-  dev.pendingB64 = undefined;
+  dev.frameStream?.requestFullFrame();
   dev.processor.updateConfig({
     tileSize: nextCfg.tileSize,
     fullframeTileCount: nextCfg.fullFrameTileCount,
@@ -133,6 +132,14 @@ export function updateDeviceRuntimeConfig(dev: DeviceSession, patch: RuntimeConf
 }
 
 export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<DeviceSession> {
+  const previous = setups.get(id);
+  const pending = (previous ?? Promise.resolve()).catch(() => {}).then(() => createOrUpdateDeviceAsync(id, cfg));
+  setups.set(id, pending);
+  try { return await pending; }
+  finally { if (setups.get(id) === pending) setups.delete(id); }
+}
+
+async function createOrUpdateDeviceAsync(id: string, cfg: DeviceConfig): Promise<DeviceSession> {
   const root = getRoot();
   if (!root) throw new Error("CDP not ready");
 
@@ -140,7 +147,7 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
   if (device) {
     if (deviceConfigsEqual(device.cfg, cfg)) {
       device.lastActive = Date.now();
-      device.processor.requestFullFrame();
+      requestDeviceKeyframe(device);
       return device;
     } else {
       console.log(`[device] Reconfiguring device ${id}`);
@@ -209,34 +216,16 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
     selfTestRunner: new SelfTestRunner(broadcaster),
     streamPaused: false,
     debugOverlayEnabled: false,
-    pendingB64: undefined,
-    throttleTimer: undefined,
-    lastProcessedMs: undefined,
   };
   devices.set(id, newDevice);
   newDevice.processor.requestFullFrame();
 
-  const flushPending = async () => {
+  newDevice.frameStream = new LatestFrameStream(async (b64, force, current) => {
     const dev = newDevice;
-    dev.throttleTimer = undefined;
-
-    const b64 = dev.pendingB64;
-    dev.pendingB64 = undefined;
-    if (!b64) return;
-    if (dev.streamPaused) {
-      dev.lastProcessedMs = Date.now();
-      return;
-    }
-
-    try {
       const pngFull = Buffer.from(b64, "base64");
-
       const h32 = hash32(pngFull);
-      if (dev.prevFrameHash === h32) {
-        dev.lastProcessedMs = Date.now();
-        return;
-      }
-      dev.prevFrameHash = h32;
+      if (!force && dev.prevFrameHash === h32) return;
+      if (force) processor.requestFullFrame();
 
       let img = sharp(pngFull);
       if (dev.cfg.rotation) img = img.rotate(dev.cfg.rotation);
@@ -245,20 +234,20 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });
+      if (!current()) return;
       const out = await processor.processFrameAsync(
         { data, width: info.width, height: info.height },
         { debugOverlayEnabled: dev.debugOverlayEnabled }
       );
+      if (!current()) return;
+      dev.prevFrameHash = h32;
       if (out.rects.length > 0) {
         dev.frameId = (dev.frameId + 1) >>> 0;
         broadcaster.sendFrameChunked(id, out, dev.frameId, dev.cfg.maxBytesPerMessage);
       }
-    } catch (e) {
+  }, () => newDevice.cfg.minFrameInterval, (e) => {
       console.warn(`[device] Failed to process frame for ${id}: ${(e as Error).message}`);
-    } finally {
-      dev.lastProcessedMs = Date.now();
-    }
-  };
+  });
 
   session.on("Page.screencastFrame", async (evt: any) => {
     // ACK immediately to keep producer running
@@ -266,18 +255,8 @@ export async function ensureDeviceAsync(id: string, cfg: DeviceConfig): Promise<
 
     if (broadcaster.getClientCount(newDevice.deviceId) === 0)
       return;
-    if (newDevice.streamPaused)
-      return;
-
     newDevice.lastActive = Date.now();
-    newDevice.pendingB64 = evt.data;
-
-    const now = Date.now();
-    const since = newDevice.lastProcessedMs ? (now - newDevice.lastProcessedMs) : Infinity;
-    if (!newDevice.throttleTimer) {
-      const delay = Math.max(0, newDevice.cfg.minFrameInterval - (Number.isFinite(since) ? since : 0));
-      newDevice.throttleTimer = setTimeout(flushPending, delay);
-    }
+    newDevice.frameStream?.submit(evt.data);
   });
 
   return newDevice;
@@ -311,8 +290,7 @@ async function deleteDeviceAsync(device: DeviceSession) {
   if (!devices.delete(device.deviceId))
     return;
 
-  if (device.throttleTimer)
-    clearTimeout(device.throttleTimer);
+  device.frameStream?.stop();
 
   broadcaster.clearQueue(device.deviceId);
 

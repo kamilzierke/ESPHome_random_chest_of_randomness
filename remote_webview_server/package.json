@@ -1,6 +1,6 @@
 {
   "name": "remotewebviewserver",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:integration": "node --test test/integration.mjs",
     "test:watch": "vitest --watch",
     "coverage": "vitest run --coverage"
   },

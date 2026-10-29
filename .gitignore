@@ -16,3 +16,15 @@ __pycache__/
 # PlatformIO / ESPHome build caches
 .platformio/
 .esphome-test/
+
+# Isolated verification tools, reports and deployment bundles
+.venv*/
+.cache/
+.audit/
+.b/
+*.log
+**/.esphome/
+**/secrets*.yaml
+.env
+.env.*
+!.env.example

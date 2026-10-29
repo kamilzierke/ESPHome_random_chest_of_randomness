@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.11 - 2026-10-29 (prepared locally)
+
+- Replay cached screenshots for keyframe requests and resume on static pages.
+- Serialize per-device encoding, configuration and client input.
+- Bound socket backpressure and wait for send completion; reconnect to recover
+  instead of silently dropping dependent encoded deltas.
+- Hash every RGBA byte so green/blue/alpha changes are detected.
+- Bound incoming payloads and preserve startup commands while CDP initializes.
+- Preserve protocol v1 and JPEG compatibility with existing firmware.
+
 ## 1.1.10 - 2026-05-22
 
 ### Added

@@ -1,0 +1,11 @@
+components/remote_webview/* text eol=lf
+examples/remote_webview_client/* text eol=lf
+remote_webview_server/src/* text eol=lf
+remote_webview_server/test/* text eol=lf
+remote_webview_server/*.json text eol=lf
+remote_webview_server/*.yaml text eol=lf
+remote_webview_server/*.sh text eol=lf
+scripts/* text eol=lf
+tests/*.py text eol=lf
+tests/*.cpp text eol=lf
+tests/fixtures/* text eol=lf

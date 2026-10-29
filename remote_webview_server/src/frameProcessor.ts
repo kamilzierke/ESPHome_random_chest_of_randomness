@@ -38,6 +38,8 @@ export class FrameProcessor {
   private _cfg: FrameProcessorCfg;
   private _cols = 0;
   private _rows = 0;
+  private _width = 0;
+  private _height = 0;
   private _prev?: Uint32Array;
   private _iter = 0;
   private _fullFrameRequested = false;
@@ -52,9 +54,12 @@ export class FrameProcessor {
   }
 
   public async processFrameAsync(rgba: RGBA, options: FrameProcessOptions = {}): Promise<FrameOut> {
-    if (!this._prev) this._initGrid(rgba.width, rgba.height);
+    if (!this._prev || this._width !== rgba.width || this._height !== rgba.height) {
+      this._initGrid(rgba.width, rgba.height);
+      this.requestFullFrame();
+    }
 
-    let forceFull = (this._iter % this._cfg.fullFrameEvery) === 0;
+    let forceFull = this._cfg.fullFrameEvery > 0 && (this._iter % this._cfg.fullFrameEvery) === 0;
     if (this._fullFrameRequested) {
       forceFull = true;
       this._fullFrameRequested = false;
@@ -288,6 +293,8 @@ export class FrameProcessor {
   }
 
   private _initGrid(w: number, h: number) {
+    this._width = w;
+    this._height = h;
     this._cols = Math.ceil(w / this._cfg.tileSize);
     this._rows = Math.ceil(h / this._cfg.tileSize);
     this._prev = new Uint32Array(this._cols * this._rows);
