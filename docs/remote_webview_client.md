@@ -4,12 +4,11 @@ The ESPHome component lives in `components/remote_webview`.
 
 ## Installation
 
-```yaml
-external_components:
-  - source: github://kamilzierke/ESPHome_random_chest_of_randomness@main
-    refresh: 0s
-    components: [remote_webview]
-```
+Use the controlled local-release procedure in [testing.md](testing.md).
+It writes a source-addressed directory and switches component and package paths
+together, after compilation. `rwv_source_id` appears in the firmware's config log.
+For Git distribution, publish the reviewed change first and pin both the component
+and packages to the same full commit SHA; do not follow moving `main`.
 
 ## Example
 
@@ -133,13 +132,13 @@ The server logs the effective values on connect. The ESPHome values take priorit
 - `every_nth_frame` - server-side Chromium screencast sampling.
 - `min_frame_interval` - server-side minimum frame processing interval in milliseconds.
 - `jpeg_quality` - server-side JPEG quality.
-- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `raw565` is implemented as an experimental direct RGB565 path. `auto` currently behaves as a JPEG alias. `raw565_rle` remains accepted for backward compatibility, but the server falls back to JPEG until that client draw path exists.
+- `render_mode` - requested render mode sent to the server as `rm`. `jpeg` is the production default. `png` is implemented for measurement and can be selected at boot or runtime. `raw565` is implemented as an experimental direct RGB565 path. `auto` currently behaves as a JPEG alias. `raw565_rle` is rejected by the client schema because its decoder does not exist; the server retains its legacy JPEG fallback for older senders.
 - `max_bytes_per_msg` - both client receive limit and server-side packet chunking hint.
 - `big_endian` - local RGB565 byte order for drawing decoded pixels.
 - `rotation` - sent to the server as `r`; affects rendered image rotation and touch mapping.
-- `latest_frame_wins` - local ESP decode queue behavior. If true, old queued packets are dropped when the decode queue is full.
+- `latest_frame_wins` - local ESP decode queue behavior. If true, old queued packets can be dropped when the decode queue is full. Either overflow policy invalidates the delta image and requests a new full frame; decoding resumes beyond the loss boundary.
 - `stream_control_enabled` - enables pause/resume/keyframe commands from ESP to server.
-- `touch_wake_passthrough` - when paused, first touch resumes stream and is forwarded if true; if false, the component drops touch events while paused.
+- `touch_wake_passthrough` - when paused, first touch resumes stream and is forwarded if true; if false, the first contact wakes the panel and its entire Down/Move/Up sequence is consumed until release.
 - `telemetry_log_interval_ms` - local telemetry log interval.
 - `sensors` - optional ESPHome native diagnostic sensors. If omitted, no sensor entities are created and the component keeps the previous YAML behavior. `unsupported_encoding_drops` increments when a server sends a frame encoding the client cannot decode.
 - `binary_sensors` - optional ESPHome native state entities for connection, stream pause and touch enable state.
@@ -201,7 +200,7 @@ The package provides:
 
 - `rwv_sleep` - pauses the stream and turns off `${rwv_backlight_id}`.
 - `rwv_wake` - turns on `${rwv_backlight_id}`, resumes the stream and requests a keyframe.
-- `rwv_touch_activity` - hook this from `touchscreen.on_touch` to wake the panel.
+- `rwv_touch_activity` - the power package attaches this to the existing touchscreen automatically and starts the idle timer on boot. Do not add a duplicate hook.
 - `rwv_idle_timer` - restartable inactivity timer.
 - `rwv_sleep_mode` - `dim_then_off` dims first, then sleeps; `off` keeps the panel on until sleep.
 - `rwv_idle_dim_after` - idle time before dimming in `dim_then_off` mode.

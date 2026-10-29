@@ -1,0 +1,12 @@
+{
+  "origin": "N:/esphome/my_components/gsl3680",
+  "files": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "touchscreen.py": "a156328ec094cfcc5002f902182c906b72ef44ad99b72157f5c3fcdee81a191e",
+    "gsl3680.cpp": "f8a2bbaa204136d4cbe457b5b953b914295f971e40c794862f3b77a347470ab8",
+    "gsl3680.h": "8a45ffd50e73e0afc5b2aef1bff9059a1711555dd12ffaeda861d37c738cb089",
+    "gsl3680_firmware.h": "7cbeed20f9c4be5cfc9671810e4d45f90996ca696793924b01f597a0e42ba5c3",
+    "gsl_point_id.cpp": "9d3901d578e398d3f941260f6df8b89376cc092a654e478d7b4c945b4bc8ce15",
+    "gsl_point_id.h": "94e81e2e23c3ab22a9e0f8581479b0fea1f47316ca5ded9a7a59dec9f4f8d4bb"
+  }
+}

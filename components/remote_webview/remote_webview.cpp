@@ -23,16 +23,24 @@ struct PngDrawContext {
   RemoteWebView *self{nullptr};
   int16_t dst_x{0};
   int16_t dst_y{0};
+  uint16_t width{0}, height{0};
+  bool valid{false}, complete{false};
 };
 
 static inline void websocket_force_reconnect(esp_websocket_client_handle_t client) {
   if (!client) return;
-  esp_websocket_client_stop(client);
-  esp_websocket_client_start(client);
+  const esp_err_t stopped = esp_websocket_client_stop(client);
+  if (stopped != ESP_OK) {
+    ESP_LOGW(TAG, "websocket stop failed: %d", stopped);
+    return;
+  }
+  const esp_err_t started = esp_websocket_client_start(client);
+  if (started != ESP_OK) ESP_LOGE(TAG, "websocket start failed: %d", started);
 }
 
 void RemoteWebView::setup() {
   self_ = this;
+  device_id_ = resolve_device_id_();
 
   if (!display_) {
     ESP_LOGE(TAG, "no display");
@@ -45,8 +53,11 @@ void RemoteWebView::setup() {
   q_decode_ = xQueueCreate(cfg::decode_queue_depth, sizeof(WsMsg));
   ws_send_mtx_ = xSemaphoreCreateMutex();
 
-  start_decode_task_();
-  start_ws_task_();
+  if (!q_decode_ || !ws_send_mtx_) {
+    ESP_LOGE(TAG, "queue/mutex allocation failed");
+    mark_failed();
+    return;
+  }
 
   if (touch_) {
     touch_listener_ = new RemoteWebViewTouchListener(this);
@@ -97,10 +108,25 @@ void RemoteWebView::setup() {
     }
   }
 #endif
+  start_decode_task_();
+  if (!is_failed()) start_ws_task_();
+}
+
+void RemoteWebView::loop() {
+  if (session_pending_.exchange(false) && ws_connected_) {
+    apply_stream_state_();
+    sync_runtime_config_();
+    if (stream_control_enabled_ && debug_overlay_enabled_)
+      ws_send_client_control_(proto::ClientControlCmd::SetDebugOverlay, 1);
+    if (!url_.empty()) ws_send_open_url_(url_.c_str(), 0);
+  }
+  if (connection_dirty_.exchange(false)) publish_connection_state_();
+  maybe_publish_diagnostics_();
 }
 
 void RemoteWebView::dump_config() {
   ESP_LOGCONFIG(TAG, "remote_webview:");
+  ESP_LOGCONFIG(TAG, "  source_id: %s", source_id_.c_str());
 
   const std::string id = device_id_.empty() ? resolve_device_id_() : device_id_;
   ESP_LOGCONFIG(TAG, "  id: %s", id.c_str());
@@ -169,7 +195,17 @@ void RemoteWebView::set_stream_paused(bool paused) {
   if (stream_paused_ == paused)
     return;
 
+  // The host on_touch automation can resume before TouchListener::touch().
+  // Preserve wake-only semantics for that same physical contact, including
+  // (0,0), where ESPHome may omit the initial update() callback.
+  if (!paused && !touch_wake_passthrough_ && touch_) {
+    for (const auto &point : touch_->get_touches()) {
+      if (point.state == touchscreen::STATE_PRESSED || point.state == touchscreen::STATE_UPDATED)
+        suppress_touch_until_release_ = true;
+    }
+  }
   stream_paused_ = paused;
+  invalidate_image_();
   if (paused)
     clear_decode_queue_();
 
@@ -252,22 +288,20 @@ void RemoteWebView::set_runtime_render_mode(int v) {
 }
 
 void RemoteWebView::request_full_frame() {
-  if (!stream_control_enabled_)
-    return;
-
-  if (ws_send_client_control_(proto::ClientControlCmd::RequestKeyframe, 1)) {
-    ESP_LOGV(TAG, "requested keyframe");
-  }
+  if (stream_control_enabled_) keyframe_requested_ = true;
 }
 
 void RemoteWebView::reconnect() {
-  if (!ws_client_)
-    return;
+  reconnect_requested_ = true;
+}
 
-  ws_connected_ = false;
-  publish_connection_state_();
-  websocket_force_reconnect(ws_client_);
-  ESP_LOGD(TAG, "websocket reconnect requested");
+void RemoteWebView::invalidate_image_() {
+  portENTER_CRITICAL(&recovery_mux_);
+  recovery_after_frame_ = last_wire_frame_.load();
+  recovery_barrier_valid_ = wire_frame_seen_.load();
+  recovery_epoch_.fetch_add(1);
+  portEXIT_CRITICAL(&recovery_mux_);
+  keyframe_requested_ = true;
 }
 
 void RemoteWebView::clear_decode_queue_() {
@@ -415,185 +449,166 @@ void RemoteWebView::publish_runtime_control_states_() {
 }
 
 void RemoteWebView::start_ws_task_() {
-  xTaskCreatePinnedToCore(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0);
+  if (xTaskCreatePinnedToCore(&RemoteWebView::ws_task_tramp_, "rwv_ws", cfg::ws_task_stack, this, 5, &t_ws_, 0) != pdPASS) {
+    ESP_LOGE(TAG, "websocket task allocation failed");
+    mark_failed();
+  }
 }
 
 void RemoteWebView::ws_task_tramp_(void *arg) {
   auto *self = reinterpret_cast<RemoteWebView*>(arg);
-
   std::string uri_str = self->build_ws_uri_();
   esp_websocket_client_config_t cfg_ws = {};
   cfg_ws.uri = uri_str.c_str();
   cfg_ws.reconnect_timeout_ms = 2000;
-  cfg_ws.network_timeout_ms   = 10000;
-  cfg_ws.task_stack           = cfg::ws_task_stack;
-  cfg_ws.task_prio            = cfg::ws_task_prio;
-  cfg_ws.buffer_size          = cfg::ws_buffer_size;
+  cfg_ws.network_timeout_ms = 10000;
+  cfg_ws.task_stack = cfg::ws_task_stack;
+  cfg_ws.task_prio = cfg::ws_task_prio;
+  cfg_ws.buffer_size = cfg::ws_buffer_size;
   cfg_ws.disable_auto_reconnect = false;
-
+  cfg_ws.enable_close_reconnect = true;
   WsReasm reasm{};
+  reasm.owner = self;
   esp_websocket_client_handle_t client = esp_websocket_client_init(&cfg_ws);
-  ESP_ERROR_CHECK(esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, ws_event_handler_, &reasm));
-  ESP_ERROR_CHECK(esp_websocket_client_start(client));
-
+  self->ws_client_ = client;
+  if (!client || esp_websocket_register_events(client, WEBSOCKET_EVENT_ANY, ws_event_handler_, &reasm) != ESP_OK ||
+      esp_websocket_client_start(client) != ESP_OK) {
+    ESP_LOGE(TAG, "websocket initialization failed");
+    if (client) esp_websocket_client_destroy(client);
+    self->ws_client_ = nullptr;
+    vTaskDelete(nullptr);
+    return;
+  }
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(5000));
-
-    if (!esp_websocket_client_is_connected(client)) {
-      websocket_force_reconnect(client);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    if (self->reconnect_requested_.exchange(false)) {
+      if (xSemaphoreTake(self->ws_send_mtx_, pdMS_TO_TICKS(250)) == pdTRUE) {
+        websocket_force_reconnect(client);
+        xSemaphoreGive(self->ws_send_mtx_);
+      } else self->reconnect_requested_ = true;
+    }
+    if (!esp_websocket_client_is_connected(client)) continue;
+    if (self->keyframe_requested_ && !self->stream_control_enabled_ && !self->stream_paused_) {
+      self->keyframe_requested_ = false;
+      self->reconnect_requested_ = true;
       continue;
     }
-
-    if (self && self->ws_client_ && esp_websocket_client_is_connected(self->ws_client_)) {
-      const uint64_t now = esp_timer_get_time();
-      if (now - self->last_keepalive_us_ >= cfg::ws_keepalive_interval_us) {
-        if (self->ws_send_keepalive_()) {
-          self->last_keepalive_us_ = now;
-          ESP_LOGV(TAG, "[ws] keepalive sent");
-        }
-      }
+    const uint64_t now = esp_timer_get_time();
+    if (self->keyframe_requested_ && !self->stream_paused_ && self->stream_control_enabled_ &&
+        now - self->last_keyframe_request_us_ >= 1000000ULL) {
+      self->keyframe_requested_ = false;
+      if (self->ws_send_client_control_(proto::ClientControlCmd::RequestKeyframe, 1))
+        self->last_keyframe_request_us_ = now;
+      else self->keyframe_requested_ = true;
     }
+    if (now - self->last_keepalive_us_ >= cfg::ws_keepalive_interval_us && self->ws_send_keepalive_())
+      self->last_keepalive_us_ = now;
   }
 }
 
 void RemoteWebView::reasm_reset_(WsReasm &r) {
   if (r.buf) free(r.buf);
   r.buf = nullptr; r.total = 0; r.filled = 0;
+  r.frame_size = 0; r.frame_filled = 0;
 }
 
 void RemoteWebView::ws_event_handler_(void *handler_arg, esp_event_base_t, int32_t event_id, void *event_data) {
   auto *r = reinterpret_cast<WsReasm*>(handler_arg);
+  auto *self = r ? r->owner : nullptr;
   auto *e = reinterpret_cast<const esp_websocket_event_data_t *>(event_data);
-
+  if (!self || !e) return;
   switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
-      if (self_) {
-        self_->ws_client_ = e->client;
-        self_->ws_connected_ = true;
-        if (self_->ws_connected_once_) {
-          self_->reconnect_count_++;
-        } else {
-          self_->ws_connected_once_ = true;
-        }
-        self_->last_keepalive_us_ = esp_timer_get_time();
-        self_->apply_stream_state_();
-        self_->sync_runtime_config_();
-        if (self_->stream_control_enabled_ && self_->debug_overlay_enabled_) {
-          self_->ws_send_client_control_(proto::ClientControlCmd::SetDebugOverlay, 1);
-        }
-        self_->publish_connection_state_();
-        self_->maybe_publish_diagnostics_();
-        if (!self_->url_.empty()) {
-          self_->ws_send_open_url_(self_->url_.c_str(), 0);
-        }
-      }
+      self->clear_decode_queue_();
+      self->wire_frame_seen_ = false;
+      self->invalidate_image_();
+      self->keyframe_requested_ = self->stream_control_enabled_;
+      self->ws_connected_ = true;
+      if (self->ws_connected_once_) self->reconnect_count_++;
+      self->ws_connected_once_ = true;
+      self->session_pending_ = true;
+      self->connection_dirty_ = true;
       ESP_LOGI(TAG, "[ws] connected");
       break;
-
     case WEBSOCKET_EVENT_DISCONNECTED:
-      if (self_) {
-        self_->ws_client_ = nullptr;
-        self_->ws_connected_ = false;
-        self_->publish_connection_state_();
-      }
-      ESP_LOGI(TAG, "[ws] disconnected");
-      if (self_) self_->last_keepalive_us_ = 0; 
-      reasm_reset_(*r);
-      websocket_force_reconnect(e->client);
-      break;
-
-#ifdef WEBSOCKET_EVENT_CLOSED
     case WEBSOCKET_EVENT_CLOSED:
-      if (self_) {
-        self_->ws_client_ = nullptr;
-        self_->ws_connected_ = false;
-        self_->publish_connection_state_();
-      }
-      ESP_LOGI(TAG, "[ws] closed");
-      if (self_) self_->last_keepalive_us_ = 0; 
+      self->ws_connected_ = false;
+      self->connection_dirty_ = true;
+      self->invalidate_image_();
       reasm_reset_(*r);
-      websocket_force_reconnect(e->client);
+      // esp_websocket_client owns automatic reconnect, including clean close.
+      ESP_LOGI(TAG, "[ws] disconnected/closed");
       break;
-#endif
-
     case WEBSOCKET_EVENT_DATA: {
-      if (!self_) break;
-
-      const uint8_t *frag = (const uint8_t *)e->data_ptr;
-      size_t frag_len = (size_t)e->data_len;
-      bool is_bin  = (e->op_code == WS_TRANSPORT_OPCODES_BINARY);
-      if (!is_bin) break;
-
+      if (e->op_code != WS_TRANSPORT_OPCODES_BINARY && e->op_code != WS_TRANSPORT_OPCODES_CONT) break;
+      const size_t limit = self->max_bytes_per_msg_ > 0 ? size_t(self->max_bytes_per_msg_) : cfg::ws_max_message_bytes;
+      if (e->data_len < 0 || e->payload_len < 0 || e->payload_offset < 0 ||
+          (e->data_len && !e->data_ptr)) {
+        reasm_reset_(*r); self->invalidate_image_(); break;
+      }
       if (e->payload_offset == 0) {
-        reasm_reset_(*r);
-        const size_t max_allowed = (self_ && self_->max_bytes_per_msg_ > 0) 
-                                   ? (size_t)self_->max_bytes_per_msg_ 
-                                   : cfg::ws_max_message_bytes;
-        if ((size_t)e->payload_len > max_allowed) {
-          ESP_LOGE(TAG, "WS message too large: %u > %u", (unsigned)e->payload_len, (unsigned)max_allowed);
-          break;
+        if (e->op_code == WS_TRANSPORT_OPCODES_BINARY) {
+          if (r->buf) self->invalidate_image_();
+          reasm_reset_(*r);
+          if (size_t(e->payload_len) > limit) { self->invalidate_image_(); break; }
+          r->total = limit;
+          r->buf = (uint8_t *)heap_caps_malloc(limit, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+          if (!r->buf) r->buf = (uint8_t *)heap_caps_malloc(limit, MALLOC_CAP_8BIT);
+          if (!r->buf) { self->invalidate_image_(); break; }
+        } else if (!r->buf || r->frame_filled != r->frame_size) {
+          reasm_reset_(*r); self->invalidate_image_(); break;
         }
-        r->total = (size_t)e->payload_len;
-        r->buf   = (uint8_t *)heap_caps_malloc(r->total, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (!r->buf) r->buf = (uint8_t *)heap_caps_malloc(r->total, MALLOC_CAP_8BIT);
-        if (!r->buf) { ESP_LOGE(TAG, "malloc %u failed", (unsigned)r->total); r->total = 0; break; }
+        r->frame_size = size_t(e->payload_len);
+        r->frame_filled = 0;
       }
-      if (!r->buf || r->total == 0) break;
-
-      if ((size_t)e->payload_offset + frag_len > r->total) {
-        ESP_LOGE(TAG, "bad fragment bounds");
-        reasm_reset_(*r);
-        break;
+      const size_t count = size_t(e->data_len);
+      if (!r->buf || size_t(e->payload_offset) != r->frame_filled ||
+          r->frame_filled > r->frame_size || count > r->frame_size - r->frame_filled ||
+          r->filled > r->total || count > r->total - r->filled) {
+        reasm_reset_(*r); self->invalidate_image_(); break;
       }
-      memcpy(r->buf + e->payload_offset, frag, frag_len);
-      size_t new_filled = (size_t)e->payload_offset + frag_len;
-      if (new_filled > r->filled) r->filled = new_filled;
-
-      if (r->filled == r->total) {
-        WsMsg m;
-        m.buf = r->buf; m.len = r->total; m.client = e->client;
-        r->buf = nullptr; r->total = 0; r->filled = 0;
-        self_->bytes_received_ += (uint32_t) m.len;
-        bool queued = false;
-        if (self_->q_decode_) {
-          if (xQueueSend(self_->q_decode_, &m, 0) == pdTRUE) {
-            queued = true;
-          } else if (self_->latest_frame_wins_) {
-            WsMsg old{};
-            if (xQueueReceive(self_->q_decode_, &old, 0) == pdTRUE && old.buf) {
-              free(old.buf);
-              self_->decode_drop_count_++;
-            }
-            queued = (xQueueSend(self_->q_decode_, &m, 0) == pdTRUE);
-          }
+      if (count) memcpy(r->buf + r->filled, e->data_ptr, count);
+      r->filled += count; r->frame_filled += count;
+      if (r->frame_filled != r->frame_size || !e->fin) break;
+      WsMsg msg{};
+      msg.buf = r->buf; msg.len = r->filled; msg.client = e->client;
+      r->buf = nullptr; reasm_reset_(*r);
+      proto::FrameInfo info{}; size_t offset = 0;
+      if (proto::parse_frame_header(msg.buf, msg.len, info, offset)) {
+        self->last_wire_frame_ = info.frame_id;
+        self->wire_frame_seen_ = true;
+      }
+      self->bytes_received_ += uint32_t(msg.len);
+      bool queued = self->q_decode_ && xQueueSend(self->q_decode_, &msg, 0) == pdTRUE;
+      if (!queued && self->q_decode_ && self->latest_frame_wins_) {
+        WsMsg old{};
+        if (xQueueReceive(self->q_decode_, &old, 0) == pdTRUE) {
+          free(old.buf); self->decode_drop_count_++;
+          self->invalidate_image_();
         }
-
-        if (!queued) {
-          self_->decode_drop_count_++;
-          ESP_LOGW(TAG, "decode queue full, dropping packet");
-          free(m.buf);
-        }
+        queued = xQueueSend(self->q_decode_, &msg, 0) == pdTRUE;
+      }
+      if (!queued) {
+        free(msg.buf); self->decode_drop_count_++;
+        self->invalidate_image_();
       }
       break;
     }
-
     case WEBSOCKET_EVENT_ERROR:
-      if (self_) {
-        self_->ws_connected_ = false;
-        self_->publish_connection_state_();
-      }
-      ESP_LOGE(TAG, "[ws] error: type=%d tls_err=%d tls_stack=%d",
-               e->error_handle.error_type,
-               e->error_handle.esp_tls_last_esp_err,
-               e->error_handle.esp_tls_stack_err);
+      self->ws_connected_ = false;
+      self->connection_dirty_ = true;
+      ESP_LOGE(TAG, "[ws] error: type=%d tls_err=%d tls_stack=%d", e->error_handle.error_type,
+               e->error_handle.esp_tls_last_esp_err, e->error_handle.esp_tls_stack_err);
       break;
-
     default: break;
   }
 }
 
 void RemoteWebView::start_decode_task_() {
-  xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this, 6, &t_decode_, 1);
+  if (xTaskCreatePinnedToCore(&RemoteWebView::decode_task_tramp_, "rwv_decode", cfg::decode_task_stack, this, 6, &t_decode_, 1) != pdPASS) {
+    ESP_LOGE(TAG, "decode task allocation failed");
+    mark_failed();
+  }
 }
 
 void RemoteWebView::decode_task_tramp_(void *arg) {
@@ -606,11 +621,13 @@ void RemoteWebView::decode_task_tramp_(void *arg) {
       self->process_packet_(m.client, m.buf, m.len);
       if (is_frame) {
         const uint64_t elapsed_us = esp_timer_get_time() - started_us;
+        portENTER_CRITICAL(&self->decode_stats_mux_);
         self->decode_time_sum_us_ += elapsed_us;
         self->decode_time_count_++;
+        portEXIT_CRITICAL(&self->decode_stats_mux_);
         self->last_decode_ms_ = (uint32_t) (elapsed_us / 1000ULL);
         self->maybe_log_telemetry_();
-        self->maybe_publish_diagnostics_();
+
       }
       free(m.buf);
     }
@@ -637,11 +654,36 @@ void RemoteWebView::process_packet_(void * /*client*/, const uint8_t *data, size
 void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
 {
   if (stream_paused_) return;
-  if (!data || len < sizeof(proto::FrameHeader)) return;
+  if (!proto::validate_frame_packet(data, len, display_width_, display_height_)) {
+    proto::FrameInfo malformed{}; size_t malformed_offset = 0;
+    if (proto::parse_frame_header(data, len, malformed, malformed_offset) &&
+        malformed.enc != proto::Encoding::JPEG && malformed.enc != proto::Encoding::PNG &&
+        malformed.enc != proto::Encoding::RAW565) unsupported_encoding_drops_++;
+    decode_drop_count_++;
+    invalidate_image_();
+    return;
+  }
+  const uint32_t epoch = recovery_epoch_.load();
+  if (decode_epoch_ != epoch) {
+    decode_epoch_ = epoch;
+    recovering_ = true;
+    receiving_full_frame_ = false;
+    frame_complete_ = true;
+  }
 
   proto::FrameInfo fi{};
   size_t off = 0;
   if (!proto::parse_frame_header(data, len, fi, off)) return;
+  if (recovering_ && !receiving_full_frame_) {
+    if (!(fi.flags & proto::kFlagIsFullFrame) ||
+        (recovery_barrier_valid_ && int32_t(fi.frame_id - recovery_after_frame_) <= 0)) return;
+    receiving_full_frame_ = true;
+  }
+  if (fi.frame_id != frame_id_ && !frame_complete_) {
+    invalidate_image_();
+    return;
+  }
+  frame_complete_ = false;
 
   if (fi.frame_id != frame_id_) {
     frame_id_ = fi.frame_id;
@@ -658,30 +700,35 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
   for (uint16_t i = 0; i < fi.tile_count; i++) {
     proto::TileHeader th{};
     if (!proto::parse_tile_header(data, len, th, off)) return;
-    if (off + th.dlen > len) return;
+    if (th.dlen > len - off) { invalidate_image_(); return; }
 
     if (th.w == 0 || th.h == 0 || th.w > display_width_ || th.h > display_height_) {
       off += th.dlen;
       continue;
     }
 
-    if (fi.enc == proto::Encoding::JPEG && th.dlen) {
-      decode_jpeg_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
-    } else if (fi.enc == proto::Encoding::PNG && th.dlen) {
-      decode_png_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, data + off, th.dlen);
-    } else if (fi.enc == proto::Encoding::RAW565 && th.dlen) {
-      if (!draw_raw565_tile_to_lcd_((int16_t) th.x, (int16_t) th.y, th.w, th.h, data + off, th.dlen)) {
-        decode_drop_count_++;
-      }
-    } else if (th.dlen) {
-      unsupported_encoding_drops_++;
-      ESP_LOGW(TAG, "unsupported frame encoding=%u, dropping tile", (unsigned) fi.enc);
+    bool decoded = false;
+    if (fi.enc == proto::Encoding::JPEG)
+      decoded = decode_jpeg_tile_to_lcd_((int16_t)th.x, (int16_t)th.y, th.w, th.h, data + off, th.dlen);
+    else if (fi.enc == proto::Encoding::PNG)
+      decoded = decode_png_tile_to_lcd_((int16_t)th.x, (int16_t)th.y, th.w, th.h, data + off, th.dlen);
+    else if (fi.enc == proto::Encoding::RAW565)
+      decoded = draw_raw565_tile_to_lcd_((int16_t)th.x, (int16_t)th.y, th.w, th.h, data + off, th.dlen);
+    if (!decoded) {
+      decode_drop_count_++;
+      ESP_LOGW(TAG, "tile decode failed; requesting full frame");
+      invalidate_image_();
+      return;
     }
+    if (recovery_epoch_.load() != epoch) return;
 
     off += th.dlen;
   }
 
   if (fi.flags & proto::kFlagLastOfFrame) {
+    frame_complete_ = true;
+    recovering_ = false;
+    receiving_full_frame_ = false;
     const uint32_t time_ms = (esp_timer_get_time() - frame_start_us_) / 1000ULL;
     frame_stats_bytes_ += frame_bytes_;
     frame_stats_time_ += time_ms;
@@ -693,6 +740,7 @@ void RemoteWebView::process_frame_packet_(const uint8_t *data, size_t len)
 
 void RemoteWebView::process_frame_stats_packet_(const uint8_t *data, size_t len)
 {
+  if (!data || len != sizeof(proto::FrameStatsPacket) || data[1] != proto::kProtocolVersion) return;
   uint32_t avg_render_time = 0;
   if (frame_stats_count_ > 0)
     avg_render_time = frame_stats_time_ / frame_stats_count_;
@@ -713,28 +761,29 @@ void RemoteWebView::process_frame_stats_packet_(const uint8_t *data, size_t len)
   xSemaphoreGive(ws_send_mtx_);
 }
 
-bool RemoteWebView::decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len) {
+bool RemoteWebView::decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len) {
   if (!data || !len) return false;
 
 #if REMOTE_WEBVIEW_HW_JPEG
   if (hw_dec_ && hw_decode_input_buf_ && hw_decode_output_buf_) {
     jpeg_decode_picture_info_t hdr{};
     if (jpeg_decoder_get_info(data, (uint32_t)len, &hdr) != ESP_OK || !hdr.width || !hdr.height) {
-      return decode_jpeg_tile_software_(dst_x, dst_y, data, len);
+      return decode_jpeg_tile_software_(dst_x, dst_y, width, height, data, len);
     }
 
+    if (hdr.width != width || hdr.height != height) return false;
     const int aligned_w = (hdr.width  + 15) & ~15;
     const int aligned_h = (hdr.height + 15) & ~15;
     const uint32_t out_sz = (uint32_t)aligned_w * (uint32_t)aligned_h * 2u;
 
     if (aligned_w != (int)hdr.width) {
       ESP_LOGW(TAG, "jpeg dimensions not aligned: %u x %u", (unsigned)hdr.width, (unsigned)hdr.height);
-      return decode_jpeg_tile_software_(dst_x, dst_y, data, len);
+      return decode_jpeg_tile_software_(dst_x, dst_y, width, height, data, len);
     }
     
     if (len > hw_decode_input_size_ || out_sz > hw_decode_output_size_) {
       ESP_LOGW(TAG, "tile too large for HW decoder buffers");
-      return decode_jpeg_tile_software_(dst_x, dst_y, data, len);
+      return decode_jpeg_tile_software_(dst_x, dst_y, width, height, data, len);
     }
 
     jpeg_decode_cfg_t jcfg{};
@@ -749,7 +798,7 @@ bool RemoteWebView::decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const
                                         hw_decode_output_buf_, (uint32_t)hw_decode_output_size_, &written);
 
     if (dr != ESP_OK) {
-      return decode_jpeg_tile_software_(dst_x, dst_y, data, len);
+      return decode_jpeg_tile_software_(dst_x, dst_y, width, height, data, len);
     }
 
     display_->draw_pixels_at(dst_x, dst_y, (int)hdr.width, (int)hdr.height, hw_decode_output_buf_,
@@ -761,15 +810,16 @@ bool RemoteWebView::decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const
   }
 #endif  // REMOTE_WEBVIEW_HW_JPEG
 
-  return decode_jpeg_tile_software_(dst_x, dst_y, data, len);
+  return decode_jpeg_tile_software_(dst_x, dst_y, width, height, data, len);
 }
 
-bool RemoteWebView::decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len) {
+bool RemoteWebView::decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len) {
   if (!jd_.openRAM((uint8_t*)data, (int)len, &RemoteWebView::jpeg_draw_cb_s_)) {
     ESP_LOGE(TAG, "openRAM failed (len=%u) err=%d", (unsigned)len, jd_.getLastError());
     return false;
   }
 
+  if (jd_.getWidth() != width || jd_.getHeight() != height) { jd_.close(); return false; }
   jd_.setMaxOutputSize(8 * 2048);
   jd_.setPixelType(rgb565_big_endian_ ? RGB565_BIG_ENDIAN : RGB565_LITTLE_ENDIAN);
 
@@ -806,8 +856,12 @@ int RemoteWebView::jpeg_draw_cb_(JPEGDRAW *p) {
   return 1;
 }
 
-bool RemoteWebView::decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len) {
-  if (!data || !len) return false;
+bool RemoteWebView::decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len) {
+  static const uint8_t signature[] = {137, 80, 78, 71, 13, 10, 26, 10};
+  if (!data || len < 33 || memcmp(data, signature, sizeof(signature)) || memcmp(data + 12, "IHDR", 4)) return false;
+  const auto be32 = [](const uint8_t *p) { return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) |
+                                                  (uint32_t(p[2]) << 8) | uint32_t(p[3]); };
+  if (be32(data + 16) != width || be32(data + 20) != height) return false;
 
   auto *pngle = (pngle_t *) heap_caps_malloc(PNGLE_T_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!pngle) pngle = (pngle_t *) heap_caps_malloc(PNGLE_T_SIZE, MALLOC_CAP_8BIT);
@@ -823,20 +877,24 @@ bool RemoteWebView::decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const 
   ctx.self = this;
   ctx.dst_x = dst_x;
   ctx.dst_y = dst_y;
+  ctx.width = width;
+  ctx.height = height;
 
   pngle_set_user_data(pngle, &ctx);
   pngle_set_init_callback(pngle, &RemoteWebView::png_init_cb_s_);
   pngle_set_draw_callback(pngle, &RemoteWebView::png_draw_cb_s_);
+  pngle_set_done_callback(pngle, &RemoteWebView::png_done_cb_s_);
 
   const int fed = pngle_feed(pngle, data, len);
   if (fed < 0) {
     ESP_LOGE(TAG, "png decode failed: %s", pngle_error(pngle));
-    free(pngle);
+    pngle_destroy(pngle);
     return false;
   }
 
-  free(pngle);
-  return true;
+  const bool complete = ctx.valid && ctx.complete && size_t(fed) == len;
+  pngle_destroy(pngle);
+  return complete;
 }
 
 bool RemoteWebView::draw_raw565_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t w, uint16_t h, const uint8_t *data,
@@ -873,16 +931,20 @@ bool RemoteWebView::draw_raw565_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint1
 }
 
 void RemoteWebView::png_init_cb_s_(pngle_t *pngle, uint32_t w, uint32_t h) {
-  (void) pngle;
-  (void) w;
-  (void) h;
+  auto *ctx = reinterpret_cast<PngDrawContext *>(pngle_get_user_data(pngle));
+  if (ctx) ctx->valid = w == ctx->width && h == ctx->height;
+}
+
+void RemoteWebView::png_done_cb_s_(pngle_t *pngle) {
+  auto *ctx = reinterpret_cast<PngDrawContext *>(pngle_get_user_data(pngle));
+  if (ctx) ctx->complete = true;
 }
 
 void RemoteWebView::png_draw_cb_s_(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
                                    const uint8_t rgba[4]) {
   if (!pngle || !rgba) return;
   auto *ctx = reinterpret_cast<PngDrawContext *>(pngle_get_user_data(pngle));
-  if (!ctx || !ctx->self) return;
+  if (!ctx || !ctx->self || !ctx->valid) return;
   RemoteWebView *self = ctx->self;
 
   int32_t dx = ctx->dst_x + (int32_t) x;
@@ -901,10 +963,16 @@ void RemoteWebView::png_draw_cb_s_(pngle_t *pngle, uint32_t x, uint32_t y, uint3
 bool RemoteWebView::ws_send_touch_event_(proto::TouchType type, int x, int y, uint8_t pid) {
   if (touch_disabled_)
     return false;
+  if (suppress_touch_until_release_)
+    return false;
 
   if (stream_paused_) {
-    if (touch_wake_passthrough_ && type == proto::TouchType::Down) {
+    if (type == proto::TouchType::Down) {
       set_stream_paused(false);
+      if (!touch_wake_passthrough_) {
+        suppress_touch_until_release_ = true;
+        return false;
+      }
     } else {
       return false;
     }
@@ -914,7 +982,8 @@ bool RemoteWebView::ws_send_touch_event_(proto::TouchType type, int x, int y, ui
     return false;
 
   if (x < 0) x = 0; if (y < 0) y = 0;
-  if (x > 65535) x = 65535; if (y > 65535) y = 65535;
+  if (x >= display_width_) x = display_width_ - 1;
+  if (y >= display_height_) y = display_height_ - 1;
 
   uint8_t pkt[sizeof(proto::TouchPacket)];
   const size_t n = proto::build_touch_packet(type, pid, x, y, pkt);
@@ -1014,6 +1083,7 @@ void RemoteWebViewTouchListener::update(const touchscreen::TouchPoints_t &pts) {
   for (auto &p : pts) {
     switch (p.state) {
       case touchscreen::STATE_PRESSED:
+        pressed_in_update_ = true;
         parent_->ws_send_touch_event_(proto::TouchType::Down, p.x, p.y, p.id);
         break;
       case touchscreen::STATE_UPDATED:
@@ -1034,14 +1104,15 @@ void RemoteWebViewTouchListener::update(const touchscreen::TouchPoints_t &pts) {
 
 void RemoteWebViewTouchListener::release() {
   if (!parent_) return;
-  
-  parent_->ws_send_touch_event_(proto::TouchType::Up, 0, 0, 0);
+  parent_->suppress_touch_until_release_ = false;
+  pressed_in_update_ = false;
 }
 
 void RemoteWebViewTouchListener::touch(touchscreen::TouchPoint tp) {
-  if (!parent_) return;
-  
-  parent_->ws_send_touch_event_(proto::TouchType::Down, tp.x, tp.y, tp.id);
+  // Normally update() delivered Down already. ESPHome can omit it when the
+  // first coordinate is (0,0), so retain exactly one fallback Down.
+  if (parent_ && !pressed_in_update_)
+    parent_->ws_send_touch_event_(proto::TouchType::Down, tp.x, tp.y, tp.id);
 }
 
 void RemoteWebView::disable_touch(bool disable) {
@@ -1193,7 +1264,7 @@ std::string RemoteWebView::resolve_device_id_() const {
 
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "Failed to read MAC address, using random ID");
-    snprintf((char*)mac, sizeof(mac), "%06lx", (unsigned long)esp_random());
+    esp_fill_random(mac, sizeof(mac));
   }
 
   char buf[32];

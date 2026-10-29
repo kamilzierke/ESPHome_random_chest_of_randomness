@@ -1,0 +1,108 @@
+# Compile-only RWV overlay on audited JC8012P4A1C batch 2544 hardware.
+# GSL3680 is an independent local dependency, imported with checksum validation.
+# This device currently uses LVGL in HA; this fixture does not claim a deployment.
+substitutions:
+  rwv_display_id: main_display
+  rwv_touchscreen_id: touchscreen_
+  rwv_backlight_id: backlight
+  rwv_server: "127.0.0.1:8081"
+  rwv_url: "http://example.invalid/"
+
+esphome:
+  name: rwv-test-guition04
+
+esp32:
+  variant: ESP32P4
+  board: esp32-p4-evboard
+  flash_size: 16MB
+  engineering_sample: true
+  cpu_frequency: 360MHz
+  watchdog_timeout: 15s
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+
+esp32_hosted:
+  variant: ESP32C6
+  reset_pin: GPIO54
+  cmd_pin: GPIO19
+  clk_pin: GPIO18
+  d0_pin: GPIO14
+  d1_pin: GPIO15
+  d2_pin: GPIO16
+  d3_pin: GPIO17
+  active_high: true
+  use_psram: true
+
+esp_ldo:
+  - channel: 3
+    voltage: 2.5V
+
+psram:
+  mode: hex
+  speed: 100MHz
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+wifi:
+  ssid: rwv-isolated-test
+  password: test-password-only
+
+i2c:
+  - id: bus_a
+    sda: GPIO7
+    scl: GPIO8
+    scan: false
+    frequency: 400kHz
+
+output:
+  - platform: ledc
+    id: lcd_backlight_pwm
+    pin: GPIO23
+    channel: 0
+    frequency: 1000Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: lcd_backlight_pwm
+    restore_mode: ALWAYS_ON
+
+display:
+  - platform: mipi_dsi
+    model: JC8012P4A1
+    id: main_display
+    update_interval: never
+    reset_pin: GPIO27
+    auto_clear_enabled: false
+    color_order: RGB
+    dimensions:
+      width: 800
+      height: 1280
+
+touchscreen:
+  - platform: gsl3680
+    id: touchscreen_
+    display: main_display
+    i2c_id: bus_a
+    reset_pin: GPIO22
+    interrupt_pin: GPIO21
+    transform:
+      swap_xy: false
+      mirror_x: true
+      mirror_y: false
+
+external_components:
+  - source:
+      type: local
+      path: ../../components
+    components: [remote_webview]
+  - source:
+      type: local
+      path: ../../.audit/test-components
+    components: [gsl3680]
+
+packages:
+  rwv_profile: !include ../../examples/remote_webview_client/guition04-rwv-profile.yaml

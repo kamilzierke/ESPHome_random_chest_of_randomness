@@ -1,13 +1,11 @@
-name: remote_webview
 dependencies:
-  - espressif/esp_websocket_client
-  - espressif/esp-dsp
-  - jpegdec
-
-  - esp_driver_jpeg:
+  espressif/esp_websocket_client: "1.5.0"
+  espressif/esp-dsp: "1.7.1"
+  esp_driver_jpeg:
+    version: "*"
     require: private
     rules: [ { if: target == "esp32p4" } ]
-
-  - esp_mm:
+  esp_mm:
+    version: "*"
     require: private
     rules: [ { if: target == "esp32p4" } ]

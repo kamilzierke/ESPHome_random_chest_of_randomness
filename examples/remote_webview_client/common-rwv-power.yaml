@@ -7,14 +7,8 @@
 # Required IDs in the host device YAML:
 # - light: ${rwv_backlight_id}
 #
-# Recommended host hook:
-#
-# touchscreen:
-#   - platform: ...
-#     id: panel_touch
-#     on_touch:
-#       then:
-#         - script.execute: rwv_touch_activity
+# Startup and touch hooks are included below. The host must define the
+# touchscreen identified by rwv_touchscreen_id, as well as the backlight.
 
 substitutions:
   rwv_backlight_id: display_backlight
@@ -31,6 +25,18 @@ substitutions:
   rwv_sleep_mode: "dim_then_off"
   rwv_watchdog_interval: "30s"
   rwv_watchdog_missed_intervals: "0"
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - script.execute: rwv_wake
+
+touchscreen:
+  - id: !extend ${rwv_touchscreen_id}
+    on_touch:
+      then:
+        - script.execute: rwv_touch_activity
 
 globals:
   - id: rwv_watchdog_last_frame_id
@@ -86,7 +92,6 @@ script:
           transition_length: ${rwv_backlight_wake_transition}
       - lambda: |-
           id(rwv).set_stream_paused(false);
-          id(rwv).request_full_frame();
       - script.execute: rwv_idle_timer
 
   - id: rwv_touch_activity

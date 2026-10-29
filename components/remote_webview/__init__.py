@@ -2,7 +2,7 @@ import re
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor, button, display, number, select, sensor, switch, touchscreen
-from esphome.components.esp32 import add_idf_component
+from esphome.components.esp32 import add_idf_component, get_esp32_variant, include_builtin_idf_component, request_tls
 from esphome.components.display import validate_rotation
 from esphome.const import (
     CONF_ID,
@@ -27,6 +27,7 @@ from esphome.const import (
 CONF_DEVICE_ID = "device_id"
 CONF_TOUCHSCREEN_ID = "touchscreen_id"
 CONF_SERVER = "server"
+CONF_SOURCE_ID = "source_id"
 CONF_TILE_SIZE = "tile_size"
 CONF_FULL_FRAME_TILE_COUNT = "full_frame_tile_count"
 CONF_FULL_FRAME_AREA_THRESHOLD = "full_frame_area_threshold"
@@ -69,7 +70,7 @@ CONF_JPEG_QUALITY_NUMBER = "jpeg_quality_number"
 CONF_MIN_FRAME_INTERVAL_NUMBER = "min_frame_interval_number"
 CONF_TILE_SIZE_NUMBER = "tile_size_number"
 
-RENDER_MODE_OPTIONS = ["auto", "jpeg", "png", "raw565", "raw565_rle"]
+RENDER_MODE_OPTIONS = ["auto", "jpeg", "png", "raw565"]
 RENDER_MODE_SELECT_OPTIONS = ["jpeg", "png", "raw565"]
 RENDER_MODE_TO_WIRE = {name: i for i, name in enumerate(RENDER_MODE_OPTIONS)}
 
@@ -226,16 +227,17 @@ CONFIG_SCHEMA = cv.Schema(
         cv.GenerateID(CONF_TOUCHSCREEN_ID): cv.use_id(touchscreen.Touchscreen),
         cv.Required(CONF_SERVER): validate_host_port,
         cv.Required(CONF_URL): cv.string,
+        cv.Optional(CONF_SOURCE_ID, default="development"): cv.string_strict,
         cv.Optional(CONF_DEVICE_ID): cv.string,
-        cv.Optional(CONF_TILE_SIZE): cv.int_,
-        cv.Optional(CONF_FULL_FRAME_TILE_COUNT): cv.int_,
-        cv.Optional(CONF_FULL_FRAME_AREA_THRESHOLD): cv.float_,
-        cv.Optional(CONF_FULL_FRAME_EVERY): cv.int_,
-        cv.Optional(CONF_EVERY_NTH_FRAME): cv.int_,
-        cv.Optional(CONF_MIN_FRAME_INTERVAL): cv.int_,
-        cv.Optional(CONF_JPEG_QUALITY): cv.int_,
+        cv.Optional(CONF_TILE_SIZE): cv.int_range(min=1, max=1024),
+        cv.Optional(CONF_FULL_FRAME_TILE_COUNT): cv.int_range(min=1, max=1024),
+        cv.Optional(CONF_FULL_FRAME_AREA_THRESHOLD): cv.float_range(min=0, max=1),
+        cv.Optional(CONF_FULL_FRAME_EVERY): cv.int_range(min=0),
+        cv.Optional(CONF_EVERY_NTH_FRAME): cv.int_range(min=1),
+        cv.Optional(CONF_MIN_FRAME_INTERVAL): cv.int_range(min=0),
+        cv.Optional(CONF_JPEG_QUALITY): cv.int_range(min=1, max=100),
         cv.Optional(CONF_RENDER_MODE, default="jpeg"): render_mode,
-        cv.Optional(CONF_MAX_BYTES_PER_MSG): cv.int_,
+        cv.Optional(CONF_MAX_BYTES_PER_MSG): cv.int_range(min=64, max=1024 * 1024),
         cv.Optional(CONF_BIG_ENDIAN): cv.boolean,
         cv.Optional(CONF_ROTATION): validate_rotation,
         cv.Optional(CONF_LATEST_FRAME_WINS, default=False): cv.boolean,
@@ -335,6 +337,12 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
+    # esp_websocket_client links esp-tls even for ws://. ESPHome 2026.10
+    # compiles TLS out unless a consumer explicitly requests it.
+    request_tls()
+    if get_esp32_variant() == "ESP32P4":
+        include_builtin_idf_component("esp_driver_jpeg")
+        include_builtin_idf_component("esp_mm")
     cg.add_library("JPEGDEC", "1.8.4", "https://github.com/bitbank2/JPEGDEC#1.8.4")
     cg.add_library("pngle", "1.1.0")
     add_idf_component(name="espressif/esp_websocket_client", ref="1.5.0")
@@ -346,6 +354,7 @@ async def to_code(config):
     cg.add(var.set_display(disp))
     cg.add(var.set_server(config[CONF_SERVER]))
     cg.add(var.set_url(config[CONF_URL]))
+    cg.add(var.set_source_id(config[CONF_SOURCE_ID]))
 
     if CONF_TOUCHSCREEN_ID in config:
         ts = await cg.get_variable(config[CONF_TOUCHSCREEN_ID])

@@ -10,6 +10,7 @@
 
 substitutions:
   rwv_display_id: panel_display
+  rwv_source_id: "development"
   rwv_touchscreen_id: panel_touch
   rwv_server: "192.168.1.100:8081"
   rwv_url: "http://127.0.0.1:8123/dashboard-tablet01/0"
@@ -28,6 +29,7 @@ substitutions:
 
 remote_webview:
   id: rwv
+  source_id: ${rwv_source_id}
   display_id: ${rwv_display_id}
   touchscreen_id: ${rwv_touchscreen_id}
   server: ${rwv_server}

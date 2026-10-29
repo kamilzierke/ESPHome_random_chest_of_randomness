@@ -1,0 +1,181 @@
+# Shared audited ST7701S/GT911 hardware; compile-only credentials.
+substitutions:
+  devicename: rwv-test-guition03-b
+  friendly: Guition 03 verB - ESP32-4848S040 (4.0 inch, 480x480)
+  tz: Europe/Warsaw
+  pin_backlight: GPIO38
+  i2c_touch_sda: GPIO19
+  i2c_touch_scl: GPIO45
+  lcd_spi_clk: GPIO48
+  lcd_spi_mosi: GPIO47
+  lcd_cs: GPIO39
+esphome:
+  name: rwv-test-hardware
+  friendly_name: ${friendly}
+  name_add_mac_suffix: false
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+psram:
+  mode: octal
+  speed: 80MHz
+logger:
+  level: INFO
+api: null
+ota:
+- platform: esphome
+wifi:
+  ssid: rwv-isolated-test
+  password: test-password-only
+captive_portal: null
+time:
+- platform: homeassistant
+  timezone: ${tz}
+  id: homeassistant_time
+- platform: sntp
+  id: sntp_time
+  timezone: ${tz}
+debug:
+  update_interval: 5s
+text_sensor:
+- platform: wifi_info
+  ip_address:
+    name: IP Address
+    id: wifi_ip
+  ssid:
+    name: WiFi SSID
+    id: wifi_ssid_name
+- platform: debug
+  device:
+    name: Device Info
+  reset_reason:
+    name: Reset Reason
+- platform: version
+  name: Version
+  icon: mdi:cube-outline
+sensor:
+- platform: debug
+  free:
+    name: Heap Free
+  block:
+    name: Heap Max Block
+  loop_time:
+    name: Loop Time
+  psram:
+    name: Free PSRAM
+  cpu_frequency:
+    name: CPU Frequency
+- platform: uptime
+  name: Uptime
+  id: uptime_sensor
+  update_interval: 10s
+- platform: wifi_signal
+  name: WiFi Signal dB
+  id: wifi_signal_db
+  update_interval: 10s
+  entity_category: diagnostic
+- platform: copy
+  source_id: wifi_signal_db
+  name: WiFi Signal Percent
+  id: wifi_signal_percent
+  filters:
+  - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+  unit_of_measurement: '%'
+  entity_category: diagnostic
+spi:
+- id: lcd_spi
+  clk_pin: ${lcd_spi_clk}
+  mosi_pin: ${lcd_spi_mosi}
+i2c:
+- id: touch_i2c
+  sda: ${i2c_touch_sda}
+  scl:
+    number: ${i2c_touch_scl}
+    ignore_strapping_warning: true
+  scan: true
+output:
+- platform: ledc
+  pin: ${pin_backlight}
+  id: backlight_output
+  frequency: 150Hz
+  min_power: 0.01
+  zero_means_zero: true
+light:
+- platform: monochromatic
+  output: backlight_output
+  name: Display Backlight
+  id: backlight
+  restore_mode: RESTORE_DEFAULT_ON
+  default_transition_length: 0s
+touchscreen:
+- platform: gt911
+  i2c_id: touch_i2c
+  id: my_touchscreen
+display:
+- platform: st7701s
+  id: main_display
+  dimensions:
+    width: 480
+    height: 480
+  spi_mode: MODE3
+  data_rate: 2MHz
+  cs_pin: ${lcd_cs}
+  de_pin: GPIO18
+  hsync_pin: GPIO16
+  vsync_pin: GPIO17
+  pclk_pin: GPIO21
+  pclk_frequency: 12MHz
+  pclk_inverted: false
+  hsync_pulse_width: 8
+  hsync_front_porch: 10
+  hsync_back_porch: 20
+  vsync_pulse_width: 8
+  vsync_front_porch: 10
+  vsync_back_porch: 10
+  color_order: RGB
+  invert_colors: false
+  auto_clear_enabled: false
+  update_interval: never
+  init_sequence:
+  - 1
+  - - 255
+    - 119
+    - 1
+    - 0
+    - 0
+    - 16
+  - - 205
+    - 0
+  data_pins:
+    red:
+    - GPIO11
+    - GPIO12
+    - GPIO13
+    - GPIO14
+    - GPIO0
+    green:
+    - GPIO8
+    - GPIO20
+    - GPIO3
+    - GPIO46
+    - GPIO9
+    - GPIO10
+    blue:
+    - GPIO4
+    - GPIO5
+    - GPIO6
+    - GPIO7
+    - GPIO15
+button:
+- platform: shutdown
+  name: Shutdown
+- platform: safe_mode
+  name: Restart (Safe Mode)
+- platform: restart
+  name: Restart
+external_components:
+- source:
+    type: local
+    path: ../../components

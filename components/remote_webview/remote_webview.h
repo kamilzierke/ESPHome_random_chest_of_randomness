@@ -24,6 +24,7 @@
 #include <pngle.h>
 #include "protocol.h"
 #include "remote_webview_config.h"
+#include <atomic>
 
 #include "esp_event.h"
 #include "esp_websocket_client.h"
@@ -53,6 +54,7 @@ class RemoteWebView : public Component {
   void set_touchscreen(touchscreen::Touchscreen *t) { touch_ = t; }
   void set_device_id(const std::string &s) { device_id_ = s; }
   void set_url(const std::string &s) { url_ = s; }
+  void set_source_id(const std::string &s) { source_id_ = s; }
   void set_server(const std::string &s);
   void set_tile_size(int v) { tile_size_ = v; }
   void set_full_frame_tile_count(int v) { full_frame_tile_count_ = v; }
@@ -122,8 +124,12 @@ class RemoteWebView : public Component {
 
   uint32_t get_decode_drop_count() const { return decode_drop_count_; }
   uint32_t get_decode_avg_ms() const {
-    if (decode_time_count_ == 0) return last_decode_ms_;
-    return (uint32_t)((decode_time_sum_us_ / decode_time_count_) / 1000ULL);
+    portENTER_CRITICAL(&decode_stats_mux_);
+    const uint64_t sum = decode_time_sum_us_;
+    const uint32_t count = decode_time_count_;
+    portEXIT_CRITICAL(&decode_stats_mux_);
+    if (count == 0) return last_decode_ms_;
+    return uint32_t((sum / count) / 1000ULL);
   }
   uint32_t get_render_avg_ms() const { return frame_render_avg_ms_; }
   uint32_t get_last_frame_id() const { return last_frame_id_; }
@@ -135,7 +141,7 @@ class RemoteWebView : public Component {
   const char *get_render_mode_name() const { return render_mode_name_(render_mode_); }
 
   void setup() override;
-  void loop() override { maybe_publish_diagnostics_(); }
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
 
@@ -146,8 +152,10 @@ class RemoteWebView : public Component {
     void    *client{nullptr}; // opaque esp_websocket_client_handle_t
   };
   struct WsReasm {
+    RemoteWebView *owner{nullptr};
     uint8_t *buf{nullptr};
     size_t total{0}, filled{0};
+    size_t frame_size{0}, frame_filled{0};
   };
 
   static constexpr bool     kCoalesceMoves  = cfg::coalesce_moves;
@@ -161,6 +169,7 @@ class RemoteWebView : public Component {
   int display_width_{0};
   int display_height_{0};
   std::string url_;
+  std::string source_id_{"development"};
   std::string server_host_;
   std::string device_id_;
   int server_port_{0};
@@ -181,8 +190,24 @@ class RemoteWebView : public Component {
   bool touch_wake_passthrough_{false};
   bool stream_control_enabled_{false};
   uint32_t telemetry_log_interval_ms_{0};
-  bool stream_paused_{false};
-  bool ws_connected_{false};
+  std::atomic<bool> stream_paused_{false};
+  std::atomic<bool> ws_connected_{false};
+  std::atomic<bool> connection_dirty_{false};
+  std::atomic<bool> session_pending_{false};
+  std::atomic<bool> reconnect_requested_{false};
+  std::atomic<bool> keyframe_requested_{false};
+  std::atomic<uint32_t> recovery_epoch_{0};
+  portMUX_TYPE recovery_mux_ = portMUX_INITIALIZER_UNLOCKED;
+  std::atomic<uint32_t> last_wire_frame_{0};
+  std::atomic<bool> wire_frame_seen_{false};
+  uint32_t decode_epoch_{0};
+  std::atomic<uint32_t> recovery_after_frame_{0};
+  std::atomic<bool> recovery_barrier_valid_{false};
+  bool recovering_{false};
+  bool receiving_full_frame_{false};
+  bool frame_complete_{true};
+  uint64_t last_keyframe_request_us_{0};
+  bool suppress_touch_until_release_{false};
   bool debug_overlay_enabled_{false};
 
 #if REMOTE_WEBVIEW_HW_JPEG
@@ -204,23 +229,24 @@ class RemoteWebView : public Component {
   uint32_t frame_stats_count_{0};
   size_t   frame_stats_bytes_{0};
 
-  uint32_t decode_drop_count_{0};
+  std::atomic<uint32_t> decode_drop_count_{0};
+  mutable portMUX_TYPE decode_stats_mux_ = portMUX_INITIALIZER_UNLOCKED;
   uint64_t decode_time_sum_us_{0};
   uint32_t decode_time_count_{0};
-  uint32_t last_decode_ms_{0};
-  uint32_t frame_render_avg_ms_{0};
-  uint32_t last_frame_id_{0xffffffffu};
-  uint32_t reconnect_count_{0};
+  std::atomic<uint32_t> last_decode_ms_{0};
+  std::atomic<uint32_t> frame_render_avg_ms_{0};
+  std::atomic<uint32_t> last_frame_id_{0xffffffffu};
+  std::atomic<uint32_t> reconnect_count_{0};
   uint64_t last_telemetry_log_us_{0};
   uint64_t last_diagnostic_publish_us_{0};
   uint64_t last_fps_sample_us_{0};
   uint32_t last_fps_frame_count_{0};
   float fps_{0.0f};
   bool ws_connected_once_{false};
-  uint32_t bytes_received_{0};
-  uint32_t frames_received_{0};
-  uint32_t tiles_received_{0};
-  uint32_t unsupported_encoding_drops_{0};
+  std::atomic<uint32_t> bytes_received_{0};
+  std::atomic<uint32_t> frames_received_{0};
+  std::atomic<uint32_t> tiles_received_{0};
+  std::atomic<uint32_t> unsupported_encoding_drops_{0};
 
 #ifdef USE_SENSOR
   sensor::Sensor *decode_avg_ms_sensor_{nullptr};
@@ -264,7 +290,7 @@ class RemoteWebView : public Component {
   TaskHandle_t      t_ws_{nullptr};
   TaskHandle_t      t_decode_{nullptr};
 
-  esp_websocket_client_handle_t ws_client_{nullptr};
+  std::atomic<esp_websocket_client_handle_t> ws_client_{nullptr};
 
   void start_ws_task_();
   void start_decode_task_();
@@ -277,15 +303,16 @@ class RemoteWebView : public Component {
   void process_packet_(void *client, const uint8_t *data, size_t len);
   void process_frame_packet_(const uint8_t *data, size_t len);
   void process_frame_stats_packet_(const uint8_t *data, size_t len);
-  bool decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
-  bool decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
-  bool decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, const uint8_t *data, size_t len);
+  bool decode_jpeg_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len);
+  bool decode_jpeg_tile_software_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len);
+  bool decode_png_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t width, uint16_t height, const uint8_t *data, size_t len);
   bool draw_raw565_tile_to_lcd_(int16_t dst_x, int16_t dst_y, uint16_t w, uint16_t h, const uint8_t *data, size_t len);
 
   static int jpeg_draw_cb_s_(JPEGDRAW *p);
   int jpeg_draw_cb_(JPEGDRAW *p);
   JPEGDEC jd_;
   static void png_init_cb_s_(pngle_t *pngle, uint32_t w, uint32_t h);
+  static void png_done_cb_s_(pngle_t *pngle);
   static void png_draw_cb_s_(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
                              const uint8_t rgba[4]);
 
@@ -297,6 +324,7 @@ class RemoteWebView : public Component {
   void sync_runtime_config_();
 
   void clear_decode_queue_();
+  void invalidate_image_();
   void apply_stream_state_();
   void maybe_log_telemetry_();
   void maybe_publish_diagnostics_();
@@ -324,6 +352,7 @@ class RemoteWebViewTouchListener : public touchscreen::TouchListener {
   void release() override;
  private:
   RemoteWebView *parent_{nullptr};
+  bool pressed_in_update_{false};
 };
 
 #ifdef USE_SWITCH

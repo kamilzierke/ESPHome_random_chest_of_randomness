@@ -1,0 +1,211 @@
+[
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "README.md",
+    "sha256": "d430212745647a0cb9f14d48bb183c59dc54f9f6db201ec981e84f2a5b53426c"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/__init__.py",
+    "sha256": "f22709128709a2e998dfa4efdf8e5809650ce504867e02f73da57b30a87bd941"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/idf_component.yml",
+    "sha256": "78dab8ad23b0e4c43ee9730f8117b725d8fcdcd6ff0cb251c000409e661008fe"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/protocol.h",
+    "sha256": "1e72e0b903607c79a1f7481e2ea6c37d7ecfb8950939840e8b549375f4ba79fb"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/remote_webview.cpp",
+    "sha256": "97281439bc9e62d45d148e81e9cfc21fcd7ad4305f0237d10dae174c2db26be1"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/remote_webview.h",
+    "sha256": "5fb8fbd431bed9d7ff799e636b476a002ee538d487541275080fcffd6180d4cd"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "components/remote_webview/remote_webview_config.h",
+    "sha256": "c687ad964593b9cc721df3a83a0f0d2abf152589a45f039197818b55e86c4c59"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "examples/guition/common-rwv-power.yaml",
+    "sha256": "f8d1aabe73fe6f7c415e2b4682c192397a446d76f4ea35aa7051040f9df88d58"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "examples/guition/guition03-rwv-profile.yaml",
+    "sha256": "2bd1ca492ffa20b7399bb9140fbf73928711fa1af0a564cedd4df0d809b4fdf7"
+  },
+  {
+    "origin": "RemoteWebViewClient/worktree-before-audit",
+    "base_revision": "603fea906f2775a43a425f6e8d63851ecc2b9805",
+    "path": "examples/guition/guition04-rwv-profile.yaml",
+    "sha256": "4f8cd87964feaea6066a475184883a89f7e04650bbcadd2d1faceb95f7e8313a"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "README.md",
+    "sha256": "006c807d9ae0e70542e5388bab5936a4a6d9f8329e50a6abf46e5f53a5371ecb"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/__init__.py",
+    "sha256": "ff7e8aadd7261f7053615c7ee033c0b59a66f35a5a78444a0d44ec62bf380433"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/idf_component.yml",
+    "sha256": "78dab8ad23b0e4c43ee9730f8117b725d8fcdcd6ff0cb251c000409e661008fe"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/protocol.h",
+    "sha256": "31ffdaf8d1a40ec5023ba70138f2b0ec64ecd8409296439c14abc9d35e84ee72"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/remote_webview.cpp",
+    "sha256": "cf8be395d7d529a68f6f2be9195ad019364b16c443392b6e1ecf904ad4ea4014"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/remote_webview.h",
+    "sha256": "ea0dd9ebd81042229b651b770e10c48da7e4105762a615f741803503b427ccf4"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "components/remote_webview/remote_webview_config.h",
+    "sha256": "c687ad964593b9cc721df3a83a0f0d2abf152589a45f039197818b55e86c4c59"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/common-rwv-client.yaml",
+    "sha256": "6e24b7a338c6f034013465fab7fc4b4a065953d9c1b9839bb69d3de54f204b06"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/common-rwv-diagnostics.yaml",
+    "sha256": "650c111267020711d1db4f656c0a79184ee25d0cbac1ad1f6afb6daa8d6d4bff"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/common-rwv-lvgl-idle.yaml",
+    "sha256": "cfd07f9c622dcc7964cd641f5871e6c3a083ade2139a5314fbd95a983c3c33d1"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/common-rwv-power.yaml",
+    "sha256": "f541952adafc644effe29566da7b5cf271dc97332ae06c04f9cda2c9d0a8517f"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/guition03-rwv-profile.yaml",
+    "sha256": "f28a63724632e1c0832ca27f88d7392ee9817ce9cee7fb336cd7a9bfc57c11c9"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "examples/remote_webview_client/guition04-rwv-profile.yaml",
+    "sha256": "afa245eda069fa076bfb6c4ad5d777a3d1be0e1303437ed7da798aa908eb6cd9"
+  },
+  {
+    "origin": "ESPHome_random_chest_of_randomness/worktree-before-audit",
+    "base_revision": "b4927a21d227e2a650f23958536d78963dcdc3ac",
+    "path": "remote_webview_server/README.md",
+    "sha256": "f42088a6e7d1c269c4ced2262aafbe9e01ac0cce554851fe5558eb347440dd4e"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/__init__.py",
+    "sha256": "a7d8231f4ae13ecad34727ebd339d3f0acc68a9a656bd78c626a691fec2337c6"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/common-rwv-client.yaml",
+    "sha256": "bfa02bcaa62bfe9716cbee8f2cae4b39eb74d1a1128560e631d22fb27de2ebf3"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/common-rwv-diagnostics.yaml",
+    "sha256": "426434d2bd0acb54e667af258965b46fa225b406757b3f8d581ea0d93ea9a0e7"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/common-rwv-lvgl-idle.yaml",
+    "sha256": "cfd07f9c622dcc7964cd641f5871e6c3a083ade2139a5314fbd95a983c3c33d1"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/common-rwv-power.yaml",
+    "sha256": "f541952adafc644effe29566da7b5cf271dc97332ae06c04f9cda2c9d0a8517f"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/guition03-rwv-profile.yaml",
+    "sha256": "b720795e1cf557f801f9bb4a8615a7bbbebac013b7c364f76a66fbddcdb1eab0"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/guition04-rwv-profile.yaml",
+    "sha256": "d8d5b4a42f773c53a0bb037a203d76d7bf557a8cfecb4a6b14ec776caaa606fe"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/idf_component.yml",
+    "sha256": "78dab8ad23b0e4c43ee9730f8117b725d8fcdcd6ff0cb251c000409e661008fe"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/inactivity.yaml",
+    "sha256": "13d17f1bbfa6d1a75e2b21f71fe8f7d75923f6f3b7ac41503aa53ceea4e629ea"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/protocol.h",
+    "sha256": "1e72e0b903607c79a1f7481e2ea6c37d7ecfb8950939840e8b549375f4ba79fb"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/remote_webview.cpp",
+    "sha256": "f5d9385f7d72e56619dbdcac5e7f6f867ce109785d2cda5b37a4dcf11012e2a6"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/remote_webview.h",
+    "sha256": "d2efd60563262b3d63ff8652f5c7e1fc9ee58f01eea84f07cd155a5ddbc867fc"
+  },
+  {
+    "origin": "HA N:/esphome before audit",
+    "path": "my_components/remote_webview/remote_webview_config.h",
+    "sha256": "c687ad964593b9cc721df3a83a0f0d2abf152589a45f039197818b55e86c4c59"
+  }
+]

@@ -1,0 +1,2 @@
+# Reference Python: 3.12. Install in a project-local virtual environment.
+esphome==2026.10.1

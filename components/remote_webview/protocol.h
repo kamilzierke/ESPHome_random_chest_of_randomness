@@ -112,7 +112,7 @@ struct FrameInfo {
 };
 
 inline bool parse_frame_header(const uint8_t *data, size_t len, FrameInfo &out, size_t &off) {
-  if (len < sizeof(FrameHeader)) return false;
+  if (!data || len < sizeof(FrameHeader)) return false;
 
   FrameHeader h;
   memcpy(&h, data, sizeof(h));
@@ -130,7 +130,7 @@ inline bool parse_frame_header(const uint8_t *data, size_t len, FrameInfo &out, 
 
 inline bool parse_tile_header(const uint8_t *buf, size_t len, TileHeader &out, size_t &off) {
   if (!buf) return false;
-  if (off + sizeof(TileHeader) > len) return false;
+  if (off > len || sizeof(TileHeader) > len - off) return false;
 
   const uint8_t *th = buf + off;
   out.x       = rd16(th + 0);
@@ -141,6 +141,25 @@ inline bool parse_tile_header(const uint8_t *buf, size_t len, TileHeader &out, s
 
   off += sizeof(TileHeader);
   return true;
+}
+
+// Validate every tile before any pixel is drawn. Subtraction avoids overflow
+// when a corrupted peer supplies an arbitrary 32-bit payload length.
+inline bool validate_frame_packet(const uint8_t *data, size_t len, uint16_t width, uint16_t height) {
+  FrameInfo frame{};
+  size_t offset = 0;
+  if (!parse_frame_header(data, len, frame, offset) || frame.tile_count == 0) return false;
+  if (frame.enc != Encoding::JPEG && frame.enc != Encoding::PNG && frame.enc != Encoding::RAW565) return false;
+  for (uint16_t i = 0; i < frame.tile_count; i++) {
+    TileHeader tile{};
+    if (!parse_tile_header(data, len, tile, offset)) return false;
+    if (!tile.w || !tile.h || tile.x >= width || tile.y >= height ||
+        tile.w > width - tile.x || tile.h > height - tile.y ||
+        tile.dlen == 0 || tile.dlen > len - offset) return false;
+    if (frame.enc == Encoding::RAW565 && tile.dlen != size_t(tile.w) * tile.h * 2) return false;
+    offset += tile.dlen;
+  }
+  return offset == len;
 }
 
 inline size_t build_touch_packet(TouchType t, uint8_t pid, uint16_t x, uint16_t y, uint8_t *out) {

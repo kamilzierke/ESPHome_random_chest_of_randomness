@@ -1,0 +1,13 @@
+# Historical Guition03 overlay, tested against the actual ST7701S/GT911 hardware.
+substitutions:
+  devicename: rwv-test-guition03
+  rwv_server: "127.0.0.1:8081"
+  rwv_url: "http://example.invalid/"
+  rwv_rotation: "0"
+
+packages:
+  hardware: !include guition03-hardware.yaml
+  profile: !include ../../examples/remote_webview_client/guition03-rwv-profile.yaml
+
+esphome:
+  name: rwv-test-guition03

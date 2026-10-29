@@ -16,6 +16,15 @@ def load_remote_webview():
 
 
 class RemoteWebViewSchemaTest(unittest.TestCase):
+    def test_rejects_undecodable_modes_and_unbounded_message_sizes(self):
+        rwv = load_remote_webview()
+        base = {"id": "rwv", "display_id": "display", "server": "localhost:8081", "url": "http://example.invalid/"}
+        for patch in [{"render_mode": "raw565_rle"}, {"max_bytes_per_msg": -1},
+                      {"max_bytes_per_msg": 1048577}, {"jpeg_quality": 101},
+                      {"tile_size": 0}, {"every_nth_frame": 0}]:
+            with self.subTest(patch=patch), self.assertRaises(rwv.cv.Invalid):
+                rwv.CONFIG_SCHEMA({**base, **patch})
+
     def test_accepts_optional_diagnostic_entities(self):
         remote_webview = load_remote_webview()
 
