@@ -157,3 +157,31 @@ Docker image build/start, target-app compilation after an approved source switch
 cold start and physical sleep/wake/touch/rotation/fault-injection tests remain
 distinct checks. Working hardware and passing local compilation do not replace
 those checks.
+
+## Final local validation
+
+Code commit: `ec3c21d`, on `rwv-consolidation-20261029`.
+Source content ID: `c2934a9f66271ed6c7d1be2ee6b54bf242e249b289129b8fff39567eb92e33c6`.
+Machine-readable commands, versions, log hashes and firmware hashes are in
+`remote_webview_validation.json`. Private logs and the exact release are in
+`.audit/verification/20261029T103142Z` and `.audit/release-ec3c21d`.
+
+Executed from this repository:
+
+```text
+.venv-audit/Scripts/python scripts/verify.py --compile --p4 --integration --fresh --plan .audit/release-ec3c21d/plan.json
+```
+
+All 12 checks passed: 9 Python tests, host C++ compilation/bounds tests, 39 server
+unit tests, TypeScript build, the real Chromium integration, clean S3/B, S3/03
+and P4/04 builds, and the exact HA candidate build, plus version checks. The final
+clean build root is `.b/20261029T103142Z`. The tested private candidate differs
+from the audited B YAML in exactly four source/package path lines; all other
+lines are unchanged. Its temporary build-time secrets copy was removed.
+
+Production has **not** been switched. Server publication/update, the source
+switch, target ESPHome application compilation and physical checks remain open.
+The prepared script requires its exact successful build receipt and rechecks
+HA drift before applying. Firmware upload still needs a separate user decision;
+a verified known-good rollback firmware for variant B was not obtained in this
+audit, and an older non-B firmware must not be substituted for it.

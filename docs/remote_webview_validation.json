@@ -1,0 +1,185 @@
+{
+  "status": "passed locally; production switch pending",
+  "code_commit": "ec3c21d",
+  "source_id": "c2934a9f66271ed6c7d1be2ee6b54bf242e249b289129b8fff39567eb92e33c6",
+  "candidate_config_sha256": "4031a4b76a54e2651d5f9ef103e04b2c47b5c3d00d253ea71e017d7562a2269c",
+  "clean_build_root": ".b/20261029T103142Z",
+  "tools": {
+    "python": "3.12.2",
+    "esphome": "2026.10.1",
+    "esp-idf": "5.5.6",
+    "esp-elf-gcc": "14.2.0_20260121",
+    "host-g++": "16.1.0",
+    "node": "24.13.0",
+    "npm": "11.6.2"
+  },
+  "test_counts": {
+    "python": 9,
+    "server_unit": 39,
+    "server_browser_integration": 1,
+    "firmware_links": 4
+  },
+  "checks": [
+    {
+      "name": "python-tests",
+      "exit_code": 0,
+      "log_sha256": "6bc188dff982430905a623f3a43b652fcda904186ef95bac7dce83abc6eb7aeb",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-v"
+      ]
+    },
+    {
+      "name": "protocol-compile",
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "command": [
+        "C:\\Users\\Kamil\\AppData\\Local\\Microsoft\\WinGet\\Packages\\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\\mingw64\\bin\\g++.EXE",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "tests/protocol_test.cpp",
+        "-o",
+        "$REPO\\.audit\\verification\\20261029T103142Z\\protocol-test.exe"
+      ]
+    },
+    {
+      "name": "protocol-tests",
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "command": [
+        "$REPO\\.audit\\verification\\20261029T103142Z\\protocol-test.exe"
+      ]
+    },
+    {
+      "name": "server-tests",
+      "exit_code": 0,
+      "log_sha256": "565939ee9e25df1b27e20458ccdda5b7f4b7f41a59dbc6a39a31d5245775b05d",
+      "command": [
+        "C:\\Program Files\\nodejs\\npm.cmd",
+        "run",
+        "test:run"
+      ]
+    },
+    {
+      "name": "server-build",
+      "exit_code": 0,
+      "log_sha256": "11dc175aa4d1c5611f8e8b09298c52552eaffa5fbcb03c1c8023877a7561a7c0",
+      "command": [
+        "C:\\Program Files\\nodejs\\npm.cmd",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "name": "server-integration",
+      "exit_code": 0,
+      "log_sha256": "a0267e15f2888aa054d8c0cda14d1e0d9c4d43863e803a4c42d987b42dc7a220",
+      "command": [
+        "C:\\Program Files\\nodejs\\npm.cmd",
+        "run",
+        "test:integration"
+      ]
+    },
+    {
+      "name": "guition03-b-build",
+      "exit_code": 0,
+      "log_sha256": "03a10ce456b4c69c91f7e674a59c5fc8725077f2de76badd76b07cd14fb6d89f",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "esphome",
+        "compile",
+        "$REPO\\tests\\fixtures\\guition03-b.yaml"
+      ]
+    },
+    {
+      "name": "guition03-build",
+      "exit_code": 0,
+      "log_sha256": "dd29a2012f73abf0948edeca2e3c8dbf9483d412cc833cadcb5a4ff42b1c7c02",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "esphome",
+        "compile",
+        "$REPO\\tests\\fixtures\\guition03.yaml"
+      ]
+    },
+    {
+      "name": "guition04-build",
+      "exit_code": 0,
+      "log_sha256": "8331d21a7c95068290a8576669977dc1d33cf0c3a51aa1dac3109eb17638afb7",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "esphome",
+        "compile",
+        "$REPO\\tests\\fixtures\\guition04.yaml"
+      ]
+    },
+    {
+      "name": "deployment-build",
+      "exit_code": 0,
+      "log_sha256": "514a15e65d72a47fbb949703202d3d50818db8755439849dfccc1d8578da6d9f",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "esphome",
+        "compile",
+        "$REPO\\.audit\\release-ec3c21d\\payload\\guitionhmi-03-verB.yaml"
+      ]
+    },
+    {
+      "name": "esphome-version",
+      "exit_code": 0,
+      "log_sha256": "b3d7d64e801756172640ee433f3cadc390751ab05390cefcfc5a7a54f88721ca",
+      "command": [
+        "$REPO\\.venv-audit\\Scripts\\python.exe",
+        "-m",
+        "esphome",
+        "version"
+      ]
+    },
+    {
+      "name": "node-version",
+      "exit_code": 0,
+      "log_sha256": "e8c756c916132cbfea5b319970c76bb2af626e31f64bc0fb60838619f74dfdcd",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.EXE",
+        "--version"
+      ]
+    }
+  ],
+  "not_performed": [
+    "production HA source switch",
+    "target-app compilation",
+    "firmware upload",
+    "physical fault/sleep/wake/rotation tests",
+    "Docker image build/start",
+    "GitHub publication"
+  ],
+  "firmware": {
+    "rwv-test-guition03-b": {
+      "sha256": "da67e2a73ea1828889c496769e369e9018c87ec1f63aa4e54364ddbc9a2c95d3",
+      "bytes": 1030112
+    },
+    "rwv-test-guition03": {
+      "sha256": "23e7e38157bd1b0cef7704853d614a24c82d82da3559a5c55aea336e1fc4a8e2",
+      "bytes": 1030112
+    },
+    "rwv-test-guition04": {
+      "sha256": "3dd94beb8c06b6e0908c2473685761c579a2515f1770429956c1ecfc28f1d004",
+      "bytes": 1082800
+    },
+    "guitionhmi-03-b": {
+      "sha256": "1ef9c258c4888e3d1314015bf3b8f4ef548a361399022216becc3f82d8452a33",
+      "bytes": 1111728
+    }
+  }
+}
